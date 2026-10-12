@@ -13,7 +13,7 @@ Component                     Configuration
 Operating system              AlmaLinux 9
 MySQL Server                  8.4.11
 MySQL Shell                   8.4.10
-Cluster name                  labInnoDBCluster
+Cluster name                  MySQLInnoDBCluster
 Topology                      Multi-primary
 Communication stack           MYSQL
 MySQL port                    3306
@@ -170,6 +170,7 @@ ssh -i .vagrant/machines/np-mysql-lvmv9-worker001/virtualbox/private_key \
   -o StrictHostKeyChecking=no \
   vagrant@192.168.1.131
 
+mysql -uroot -p
 sudo mysqlsh --js --interactive
 
 shell.connect({user: "icadmin", host: "localhost", port: 3306});

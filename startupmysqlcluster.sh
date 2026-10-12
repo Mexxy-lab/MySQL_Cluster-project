@@ -7,7 +7,7 @@ MASTER_NODE_IP="192.168.1.130"
 WORKER_NODE1_IP="192.168.1.131"
 # WORKER_NODE2_IP="192.168.1.132"
 
-LAB_DIR="/home/pumej/Downloads/lab"
+LAB_DIR="/home/pumej/Projects/MySql_cluster_project"
 INVENTORY_FILE="$LAB_DIR/inventory.ini"
 PLAYBOOK_FILE="$LAB_DIR/deploy_mysql_cluster.yml"
 
