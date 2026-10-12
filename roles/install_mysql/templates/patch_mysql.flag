@@ -1,0 +1,7 @@
+# This file is managed by a configuration management tool
+# It holds key information on any and all MySQL Server Instances installed on this host.
+# Each <value> is separated by a dot.
+# this file drives the auto patching of mysql. 
+# mysql_os_user_info='${sid}.${db_user}.${port}.patch_mysql_true'
+# to disable auto patching - change patch_mysql_true to patch_mysql_false
+mysql_os_user_info='{{ sid }}.{{ db_os_user }}.{{ port }}.patch_mysql_true'

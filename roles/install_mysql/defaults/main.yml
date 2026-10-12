@@ -1,0 +1,249 @@
+---
+# Configure Galera
+configure_galera: true
+# option to specify CK MySQL Server Directory Structure
+deploy_using_ck_dir_structure: 'no'
+# MySQL Variant - MariaDB, Percona, Oracle-MySQL - default Percona
+mysql_variant: 'mariadb'                          # required
+# enable mysql event scheduler - true or false
+enable_mysql_event_scheduler: false
+# deploy_admin_db ==> Set to yes if this host is going to be a DB node. Default is no
+deploy_admin_db: 'no'
+populate_ckadmin_db: 'no'
+mysqld_multi_running: 'no'
+admin_db_host: 192.168.56.109
+# MySQL Accepted Variants
+accepted_mysql_variants:
+ - mariadb
+ - percona
+ - oracle-mysql
+# MySQL Variant version - MariaDB, Percona, Oracle-MySQL (6.0|5.7|5.6|5.5|latest) - default 5.7
+mysql_variant_version: 10.6                     # required
+# DBA Accepted MySQL Variant Versions - 8.0 is a placeholder, latest is assumed. Latest is current stable 5.7 major release
+accepted_mysql_variant_version:
+ - 5.1
+ - 5.5
+ - 5.6
+ - 5.7
+ - 8.0
+ - latest
+ # DBA Accepted MariaDB Variant Versions
+accepted_mariadb_variant_version:
+ - 10.0
+ - 10.1
+ - 10.6
+ - latest
+#  - 10.2  # not yet GA
+# Allow or disallow restart of MySQL - true or false
+allow_mysql_restart: false
+# Enable or Disable MySQL Auditing - percona - true or false
+enable_percona_mysql_auditing: false
+# Is this an upgrade - true or false
+mysql_upgrade: false
+# Is this an overwrite deployment - a fresh install - true or false
+mysql_db_overwrite: false
+ # This is the replication latency thresholds in minutes.
+replication_latency_warning_threshold: 30
+replication_latency_critical_threshold: 60
+# DB Operating System User details
+server_id:
+db_os_user:   mysql                         # required
+db_port: 3306                                   # required
+db_os_user_gid:
+db_os_user_uid:
+db_os_user_homedir:
+db_os_user_basedir:    /var/lib/mysql               # required
+db_os_user_base_data_dir:
+dbadmin_user_homedir: /home/dbadmin
+dbadmin_user: dbadmin
+dbadmin_group: dba
+timezone: Etc/UTC
+sid:      NOSID1                               # required
+# The directory below holds details of MySQL Server Instances installed on a given host/machine
+mysql_inventory_dir: "/etc/mysql_inventory_dir"
+mysql_inventory: "/etc/mysql_inventory"
+# key_buffer_size_in_Bytes (should include the size initials - 25MB or 25GB): 25GB
+key_buffer_size_in_Bytes:
+# enter the percentage of host memory to allocate to MyISAM Key_buffer: enter .65 for 65% of RAM size.
+key_buffer_size_percent_host_mem: .03
+# enter the percentage of host memory to allocate to innodb: enter .65 for 65% of RAM size.
+innodb_buffer_pool_size_percent_host_mem: .65
+# Example value here(should include the size initials - 25MB or 25GB): 25GB
+innodb_buffer_pool_size_in_Bytes:
+# my.cnf option values
+default_cnf_options:
+ - "max_connections = 1024"
+ - "max_binlog_size = 1G"
+ - "innodb_fast_shutdown = 1"
+#---------------
+# Basic Settings
+#---------------
+basedir: /usr
+bind_address: "0.0.0.0"
+character_set: "utf8"
+character_set_unambiguous: "UTF8MB4"
+collation: "utf8_unicode_ci"
+collation_unambiguous: "utf8mb4_0900_ai_ci"
+connect_timeout: 10
+language: "/usr/share/mysql/english"
+old_passwords: 0
+skip_external_locking: true
+skip_name_resolve:
+skip_networking:
+wait_timeout: 28800
+#--------------------------------------------------
+# SSL settings
+#--------------------------------------------------
+# ssl_cipher: "RC4-SHA:AES128-SHA:CDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-AES256-GCM-SHA384:DHE-RSA-AES128-GCM-SHA256:DHE-DSS-AES128-GCM-SHA256:kEDH+AESGCM:ECDHE-RSA-AES128-SHA256:ECDHE-ECDSA-AES128-SHA256:ECDHE-RSA-AES128-SHA:ECDHE-ECDSA-AES128-SHA:ECDHE-RSA-AES256-SHA384:ECDHE-ECDSA-AES256-SHA384:ECDHE-RSA-AES256-SHA:ECDHE-ECDSA-AES256-SHA:DHE-RSA-AES128-SHA256:DHE-RSA-AES128-SHA:DHE-DSS-AES128-SHA256:DHE-RSA-AES256-SHA256:DHE-DSS-AES256-SHA:DHE-RSA-AES256-SHA"
+ssl_cipher: "ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-CHACHA20-POLY1305:ECDHE-RSA-CHACHA20-POLY1305:ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-SHA384:ECDHE-RSA-AES256-SHA384:ECDHE-ECDSA-AES128-SHA256:ECDHE-RSA-AES128-SHA256"
+#------------
+# Fine Tuning
+#------------
+back_log: 50
+bulk_insert_buffer_size: "32M"
+expand_fast_index_creation:
+explicit_defaults_for_timestamp: 1
+group_concat_max_len: 4096
+join_buffer_size: "8M"
+lower_case_table_names: 1
+max_allowed_packet: "512M"
+max_connect_errors: 100000
+max_connections: 2000
+max_heap_table_size: "64M"
+max_sp_recursion_depth: 50
+memlock:
+open_files_limit: 16384
+port_open_timeout: 5
+query_alloc_block_size: "16K"
+read_buffer_size: "1M"
+read_rnd_buffer_size: "10M"
+sort_buffer_size: "2M"
+sql_modes: "TRADITIONAL"
+table_cache: 1024
+thread_cache_size: 8
+thread_stack: "192K"
+tmp_table_size: "64M"
+transaction_isolation: "READ-COMMITTED"
+binlog_gtid_simple_recovery: 1
+#--------------------------
+# Query Cache Configuration
+#--------------------------
+query_cache_limit: "2M"
+query_cache_size: 0
+query_cache_type: 0
+#-----------------
+# Logging Settings
+#-----------------
+log_long_format:
+log_output: "file"
+log_warnings: true
+log_error_verbosity: 3
+long_query_time: 10
+slow_query_log: 1
+#---------------------
+# Replication Settings
+#---------------------
+auto_increment_increment: 10
+auto_increment_offset: 1
+binlog_cache_size: "1M"
+binlog_do_db:
+binlog_format: "ROW"
+expire_logs_days: 7
+binlog_expire_logs_seconds: 604800
+ignore_db:
+ignore_table:
+log_slave_updates: true
+max_binlog_size: "1G"
+skip_slave_start: false
+slave_compressed_protocol: 1
+sync_binlog: 1
+##report_host: "fillhost"
+slave_net_timeout: 30
+slave_parallel_workers: 0
+slave_allow_batching: 1
+slave_checkpoint_period: 5000
+slave_checkpoint_group: 5120
+slave_pending_jobs_size_max: 104857600
+# for better crash recovery
+master_info_repository: "'table'"
+relay_log_info_repository: "'table'"
+relay_log_recovery: 0
+
+#----------------
+# InnoDB settings
+#----------------
+default_storage_engine: "INNODB"
+innodb_adaptive_flushing: 1
+innodb_autoinc_lock_mode: 2
+innodb_additional_mem_pool_size: "32M"
+innodb_buffer_pool_instances: 8
+# innodb_buffer_pool_size: "24G"
+innodb_commit_concurrency: 0
+innodb_data_file_path: "ibdata1:200M:autoextend:max:1G"
+innodb_fast_shutdown: true
+innodb_file_format: "barracuda"
+innodb_file_io_threads: 4
+innodb_file_per_table: 1
+innodb_flush_log_at_trx_commit: 2
+innodb_flush_method: "O_DIRECT"
+innodb_io_capacity: 1000
+innodb_io_capacity_max: 10000
+innodb_lock_wait_timeout: 50
+innodb_log_buffer_size: "128M"
+innodb_log_file_size: "2G"
+innodb_log_files_in_group: 2
+innodb_max_dirty_pages_pct: 15
+innodb_open_files: 2000
+innodb_purge_threads: 8
+innodb_read_io_threads: 8
+innodb_stats_on_metadata: 0
+innodb_stats_sample_pages: 96
+innodb_status_file: true
+innodb_thread_concurrency: 24
+innodb_write_io_threads: 8
+innodb_undo_tablespaces: 10
+innodb_undo_directory: "."
+innodb_undo_logs: 128
+skip_innodb:
+
+#-------------------
+# Performance Schema
+#-------------------
+performance_schema: "ON"
+
+#----------------
+# MyISAM settings
+#----------------
+myisam_max_sort_file_size: "10G"
+myisam_recover: "BACKUP"
+myisam_repair_threads: 4
+myisam_sort_buffer_size: "32M"
+# Deploy or install packages from MySQL Vendor's YUM/RPM repository
+deploy_default_repo: true              # required
+
+#--------------------
+# Replication Setups
+#--------------------
+rep_user: repl
+rep_pass: repl
+
+#-------------------
+# CK Taxonomy
+#-------------------
+ck_db_group: 'opsdb'
+ck_db_role:  'opsdb'
+ck_dataCenter: 'euw2'
+ck_isMaster: 'N'
+ck_shardNumber: 0
+ck_multiInstance: 'N'
+ck_consulMasterCandidate: 0
+ck_consulSlaveCandidate: 0
+ck_opsdb_ipaddress_or_hostname: ''
+
+# ------------------
+# Galera Config
+# -------------------
+wsrep_cluster_address: "gcomm://192.168.1.130,192.168.1.131,192.168.1.132"
+
+
+

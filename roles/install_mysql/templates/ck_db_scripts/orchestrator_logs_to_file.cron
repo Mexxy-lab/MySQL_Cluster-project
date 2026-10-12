@@ -1,0 +1,1 @@
+* * * * * root sh /usr/local/ops/bin/orchestrator_logs_to_file.sh > /tmp/orchestrator_logs_to_file.out 2>&1

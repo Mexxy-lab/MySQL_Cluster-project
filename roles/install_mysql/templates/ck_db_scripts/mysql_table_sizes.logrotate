@@ -1,0 +1,13 @@
+# =============================================================================
+# {% for line in fileBanner %}
+# {{line}} {% endfor %}
+# =============================================================================
+/var/log/dbsize/size.log {
+    compress
+    copytruncate
+    notifempty
+    missingok
+    nomail
+    rotate 3
+    daily
+}

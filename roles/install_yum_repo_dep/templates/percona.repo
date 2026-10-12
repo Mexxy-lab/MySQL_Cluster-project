@@ -1,0 +1,24 @@
+########################################
+# Percona releases and sources, stable #
+########################################
+[percona-release-$basearch]
+name = Percona-Release YUM repository - $basearch
+baseurl = http://repo.percona.com/release/$releasever/RPMS/$basearch
+enabled = 0
+gpgcheck = 0
+gpgkey = file:///etc/pki/rpm-gpg/RPM-GPG-KEY-Percona
+
+[ps-80-release-$basearch]
+name = Percona Server 8.0 release/x86_64 YUM repository
+baseurl = http://repo.percona.com/ps-80/yum/release/$releasever/RPMS/x86_64
+enabled = 0
+gpgcheck = 0
+gpgkey = file:///etc/pki/rpm-gpg/PERCONA-PACKAGING-KEY
+
+[tools-release-x86_64]
+name = Percona Tools release/x86_64 YUM repository
+baseurl = http://repo.percona.com/tools/yum/release/$releasever/RPMS/x86_64
+enabled = 0
+gpgcheck = 0
+gpgkey = file:///etc/pki/rpm-gpg/PERCONA-PACKAGING-KEY
+

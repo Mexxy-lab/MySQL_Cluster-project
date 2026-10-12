@@ -1,0 +1,613 @@
+# ============================================================
+
+# MariaDB Galera Lab - Git Ignore
+
+# Vagrant + VirtualBox + Ansible
+
+# ============================================================
+
+# ============================================================
+
+# VAGRANT
+
+# ============================================================
+
+.vagrant/
+
+# Vagrant local state
+
+.vagrant
+*.vagrant
+
+# ============================================================
+
+# VIRTUALBOX
+
+# ============================================================
+
+# VirtualBox machine configuration/state
+
+*.vbox-prev
+*.vbox-tmp
+*.vdi
+*.vmdk
+*.vhd
+*.vhdx
+*.vds
+*.hdd
+*.ova
+*.ovf
+
+# VirtualBox saved state
+
+*.sav
+
+# VirtualBox logs
+
+VBox.log
+VBox.log.*
+**/Logs/
+**/*.log
+
+# VirtualBox snapshots
+
+**/Snapshots/
+
+# ============================================================
+
+# SSH PRIVATE KEYS / CREDENTIALS
+
+# ============================================================
+
+# Private SSH keys
+
+*.pem
+*.key
+*.ppk
+id_rsa
+id_rsa.*
+id_dsa
+id_dsa.*
+id_ecdsa
+id_ecdsa.*
+id_ed25519
+id_ed25519.*
+
+# Vagrant-generated SSH keys
+
+**/.vagrant/machines/**/virtualbox/private_key
+
+# SSH known hosts
+
+known_hosts
+known_hosts.*
+
+# Certificates/private keys
+
+*.p12
+*.pfx
+*.jks
+*.keystore
+
+# ============================================================
+
+# SECRETS / PASSWORDS / TOKENS
+
+# ============================================================
+
+# Environment files
+
+.env
+.env.*
+!.env.example
+
+# Local secret/config files
+
+*.secret
+*.secrets
+*.credentials
+*.credential
+*.password
+*.passwd
+*.token
+
+# Generic secret files
+
+secrets.yml
+secrets.yaml
+secret.yml
+secret.yaml
+credentials.yml
+credentials.yaml
+
+# Local variable overrides
+
+vars/local.yml
+vars/local.yaml
+vars/secrets.yml
+vars/secrets.yaml
+vars/vault.yml
+vars/vault.yaml
+
+# Ansible Vault backup/temp files
+
+*.vault
+*.vault.yml
+*.vault.yaml
+
+# ============================================================
+
+# ANSIBLE
+
+# ============================================================
+
+# Ansible retry files
+
+*.retry
+
+# Ansible temporary files
+
+*.ansible.tmp
+*.ansible.retry
+
+# Local Ansible cache
+
+.ansible/
+**/.ansible/
+
+# Ansible fact cache
+
+fact_cache/
+facts_cache/
+
+# Local Ansible configuration
+
+ansible.cfg.local
+
+# Molecule-generated files
+
+.molecule/
+**/.molecule/
+
+# ============================================================
+
+# ANSIBLE VAULT / LOCAL OVERRIDES
+
+# ============================================================
+
+# Protect common local inventory overrides
+
+inventory/local/
+inventory/*-local
+inventory/*_local
+
+# Ignore generated inventory files
+
+inventory/generated/
+inventory/*.generated
+inventory/*.tmp
+
+# ============================================================
+
+# MARIADB / MYSQL DATA
+
+# ============================================================
+
+# Database files
+
+*.ibd
+*.frm
+*.MYD
+*.MYI
+*.MAD
+*.MAI
+
+# InnoDB system files
+
+ibdata*
+ib_logfile*
+undo*
+*.undo
+
+# MariaDB/MySQL binary logs
+
+mysql-bin.*
+binlog.*
+relay-bin.*
+relay-log.*
+
+# Aria files
+
+aria_log.*
+aria_log_control
+
+# Database PID/socket files
+
+*.pid
+*.sock
+
+# MariaDB temporary files
+
+*.ibt
+
+# Galera state
+
+grastate.dat
+gvwstate.dat
+
+# Galera/WSREP temporary state
+
+*.sst
+*.sst.gz
+
+# ============================================================
+
+# MARIADB LOGS
+
+# ============================================================
+
+*.err
+*.error
+*.slow
+*.slow.log
+*.general
+*.audit
+
+# General database logs
+
+mysql.log
+mysqld.log
+mariadb.log
+
+# Custom application/database logs
+
+**/logs/
+**/log/
+
+# ============================================================
+
+# GENERATED DATABASE DIRECTORIES
+
+# ============================================================
+
+# If database directories are ever created inside this repo,
+
+# never commit them.
+
+data/
+db/
+database/
+mysql/
+mariadb/
+
+**/data/
+**/database/
+**/mysql/
+**/mariadb/
+
+# ============================================================
+
+# CERTIFICATES
+
+# ============================================================
+
+# Protect private certificate material
+
+*.crt
+*.cer
+*.der
+*.csr
+
+# Keep public CA/certificate files only if intentionally committed.
+
+# If certificates are generated specifically for this lab,
+
+# consider adding their directory below.
+
+# Example:
+
+# certs/
+
+# **/certs/
+
+# ============================================================
+
+# TEMPORARY / BACKUP FILES
+
+# ============================================================
+
+*.tmp
+*.temp
+*.bak
+*.backup
+*.old
+*.orig
+*.save
+*.swp
+*.swo
+*~
+.#*
+#*#
+
+# Editor temporary files
+
+*.kate-swp
+*.sublime-workspace
+*.sublime-project
+
+# ============================================================
+
+# IDE / EDITOR
+
+# ============================================================
+
+# VS Code
+
+.vscode/
+*.code-workspace
+
+# IntelliJ / JetBrains
+
+.idea/
+*.iml
+*.iws
+*.ipr
+
+# Eclipse
+
+.classpath
+.project
+.settings/
+
+# Vim
+
+.vim/
+*.vim
+
+# Emacs
+
+*~
+#*#
+
+# ============================================================
+
+# OPERATING SYSTEM FILES
+
+# ============================================================
+
+# Windows
+
+Thumbs.db
+Thumbs.db:encryptable
+ehthumbs.db
+ehthumbs_vista.db
+Desktop.ini
+$RECYCLE.BIN/
+System Volume Information/
+
+# macOS
+
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+
+# Linux
+
+.directory
+.Trash-*
+.nfs*
+
+# ============================================================
+
+# SHELL / LOCAL ENVIRONMENT
+
+# ============================================================
+
+.bash_history
+.zsh_history
+*.local
+
+# WSL/local machine files
+
+wsl.conf.local
+
+# ============================================================
+
+# PYTHON
+
+# ============================================================
+
+**pycache**/
+*.py[cod]
+*$py.class
+
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+.venv/
+venv/
+env/
+ENV/
+
+pip-wheel-metadata/
+*.egg-info/
+
+# ============================================================
+
+# NODE / JAVASCRIPT
+
+# ============================================================
+
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+.npm/
+.yarn/
+.pnpm-store/
+
+# ============================================================
+
+# ARCHIVES
+
+# ============================================================
+
+*.zip
+*.tar
+*.tar.gz
+*.tgz
+*.rar
+*.7z
+*.gz
+
+# ============================================================
+
+# DOWNLOADS / INSTALLERS
+
+# ============================================================
+
+*.iso
+*.img
+*.msi
+*.exe
+*.deb
+*.rpm
+
+# ============================================================
+
+# GENERATED REPORTS / OUTPUT
+
+# ============================================================
+
+reports/
+output/
+outputs/
+results/
+artifacts/
+tmp/
+temp/
+
+*.html
+*.xml
+*.json.tmp
+
+# ============================================================
+
+# LOCAL BACKUPS
+
+# ============================================================
+
+backup/
+backups/
+.local/
+.local-backup/
+
+# ============================================================
+
+# TERRAFORM (IF ADDED TO THIS PROJECT LATER)
+
+# ============================================================
+
+.terraform/
+.terraform.lock.hcl.local
+*.tfstate
+*.tfstate.*
+crash.log
+crash.*.log
+*.tfvars
+*.tfvars.json
+
+# Terraform variable examples are safe to commit
+
+!*.tfvars.example
+
+# ============================================================
+
+# DOCKER (IF USED LATER)
+
+# ============================================================
+
+.docker/
+docker-compose.override.yml
+
+# ============================================================
+
+# LOCAL MACHINE OVERRIDES
+
+# ============================================================
+
+# Files containing machine-specific settings
+
+local.yml
+local.yaml
+*.local.yml
+*.local.yaml
+
+# User-specific configuration
+
+user.yml
+user.yaml
+
+# ============================================================
+
+# PROJECT-SPECIFIC GENERATED FILES
+
+# ============================================================
+
+# Generated deployment output
+
+deployment.log
+deployment-output.log
+ansible-output.log
+
+# Generated cluster state
+
+cluster-state.txt
+cluster-status.txt
+
+# Temporary SSH output
+
+ssh-output.txt
+
+# Generated inventories
+
+hosts.generated
+inventory.generated
+
+# ============================================================
+
+# IMPORTANT:
+
+# DO NOT IGNORE THE FOLLOWING PROJECT FILES
+
+# ============================================================
+
+# The following should remain tracked:
+
+#
+
+# Vagrantfile
+
+# deploy_play.yml
+
+# README.md
+
+# inventory/hosts
+
+# vars/main.yml
+
+# roles/
+
+#
+
+# These contain the actual infrastructure/deployment code.
+
+# Secrets should be moved to Ansible Vault or an ignored
+
+# secrets file instead of being committed.
+# Project-specific files containing credentials/secrets
+roles/install_mysql/templates/ck_db_scripts/common_functions.sh

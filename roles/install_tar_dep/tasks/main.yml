@@ -1,0 +1,12 @@
+---
+# Configure MySQL Installation Playbook Role: install_tar_dep
+# This Role Does: install the tar, screen & vim package.
+
+- name: Linux Admin Essential Tools
+  yum:
+    state: present
+    name:
+      - tar
+      - vim
+      - tmux
+

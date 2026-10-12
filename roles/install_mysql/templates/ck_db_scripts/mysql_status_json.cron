@@ -1,0 +1,7 @@
+# =============================================================================
+# {% for line in fileBanner %}
+# {{line}} {% endfor %}
+# =============================================================================
+
+# Collect global stats to json for splunk consumption
+*/5 * * * * root /usr/local/ops/bin/mysql_status_json.sh &> /dev/null

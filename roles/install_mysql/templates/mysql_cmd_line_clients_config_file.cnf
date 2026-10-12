@@ -1,0 +1,3 @@
+[client]
+user={{ db_os_user }}
+socket={{ socket }}

@@ -1,0 +1,13 @@
+instance={{ sid }}; export instance
+BASE={{ db_os_user_basedir }}; export BASE
+PORT={{ port }}; export PORT
+
+EDITOR=vi; export EDITOR
+HISTSIZE=100000; export HISTSIZE
+COLUMNS=180; export COLUMNS
+PS1='\u@\h [$instance]:\W>$'
+
+. ${BASE}/v1/admin/env/${instance}.env
+alias ${instance}='. ${BASE}/v1/admin/env/${instance}.env'
+alias myroot='mysql -u{{ db_os_user }} -S ${BASE}/v1/admin/${instance}/cfg/${instance}mysql.sock -hlocalhost'
+

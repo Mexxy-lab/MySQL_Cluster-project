@@ -1,0 +1,8 @@
+
+#-----------------------
+# Custom Variables Below 
+#-----------------------
+db_os_user: dbpoffbzii
+db_os_user_basedir: /db/p/offbzii
+sid: OFFBZIIP1
+enable_percona_mysql_auditing: true

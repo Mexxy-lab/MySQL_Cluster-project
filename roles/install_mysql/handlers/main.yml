@@ -1,0 +1,8 @@
+---
+- name: restart crond
+  service: name=crond state=restarted
+
+- name: restart mysql
+  service: name={{ lc_sid}} state=restarted
+  when:
+    - ( allow_mysql_restart is defined and allow_mysql_restart )

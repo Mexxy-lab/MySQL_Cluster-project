@@ -1,0 +1,9 @@
+{% if (is_mysql80|bool and true) or (is_latest|bool and true) %}
+set sql_log_bin=0;
+alter user 'root'@'localhost' identified by '{{ sid }}cpsabd';
+FLUSH PRIVILEGES;
+{% else %}
+set sql_log_bin=0;
+SET Password=PASSWORD('{{ sid }}cpsabd');
+FLUSH PRIVILEGES;
+{% endif %}

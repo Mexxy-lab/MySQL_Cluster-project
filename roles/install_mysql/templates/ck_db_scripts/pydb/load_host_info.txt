@@ -1,0 +1,6 @@
+# Uncommented lines in this file should take the format:
+# ipAddress,datacenter,ipAddress,groupName,dataCenter,instanceName,port,role,isMaster,shardNumber,socket,fqdn,datadir,multiInstance,consulMasterCandidate,consulSlaveCandidate
+# 192.168.56.102.euw2,192.168.56.102,opsdb,euw2,OFFBZIIP1,3306,opsdb,N,1,/db/p/offbzii/v1/admin/OFFBZIIP1/cfg/OFFBZIIP1mysql.sock,192.168.56.102,/db/p/offbzii/v3/table/,N,1,0
+# 192.168.56.103.euw2,192.168.56.103,fldb,euw2,OFFBZIIP1,3306,shard,N,1,/db/p/offbzii/v1/admin/OFFBZIIP1/cfg/OFFBZIIP1mysql.sock,192.168.56.103,/db/p/offbzii/v3/table/,N,1,0
+# 192.168.56.103.euw2,192.168.56.103,opsdb,euw2,OFFBZIIP1,3306,opsdb,N,1,/db/p/offbzii/v1/admin/OFFBZIIP1/cfg/OFFBZIIP1mysql.sock,192.168.56.103,/db/p/offbzii/v3/table/,N,1,0
+{{ hostvars[inventory_hostname]['ansible_default_ipv4']['address'] }}.{{ck_dataCenter}},{{ hostvars[inventory_hostname]['ansible_default_ipv4']['address'] }},{{ck_db_group}},{{ck_dataCenter}},{{sid}},{{port}},{{ck_db_role}},{{ck_isMaster}},{{ck_shardNumber}},{{socket}},{{ hostvars[inventory_hostname]['ansible_default_ipv4']['address'] }},{{db_os_user_basedir }}/v3/table/,{{ck_multiInstance}},{{ck_consulMasterCandidate}},{{ck_consulSlaveCandidate}}

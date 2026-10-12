@@ -1,0 +1,6 @@
+# This file is managed by a configuration management tool
+# It holds key information on any and all MySQL Server Instances installed on this host.
+# Each <key=value> is separated by double semi-colons(;;)
+# os_user=<os_db_user>;;socket=<db_socket_file>;;sid=<dba_sid>;;port=<db_port>
+[ Installed_MySQL_Servers ]
+os_user={{ db_os_user }};;socket={{ socket }};;sid={{ sid }};;port={{ port }}

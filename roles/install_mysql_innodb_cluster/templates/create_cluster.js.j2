@@ -1,0 +1,179 @@
+
+shell.connect({
+  user: "{{ mysql_cluster_admin_user }}",
+  password: "{{ mysql_cluster_admin_password }}",
+  host: "localhost",
+  port: {{ mysql_server_port }}
+});
+
+var session = shell.getSession();
+var clusterName = "{{ mysql_cluster_name }}";
+var masterAddress = "{{ hostvars[groups['master'][0]].ansible_host }}:{{ mysql_server_port }}";
+var workerAddress = "{{ hostvars[groups['workers'][0]].ansible_host }}:{{ mysql_server_port }}";
+
+function getExistingCluster() {
+  try {
+    return dba.getCluster(clusterName);
+  } catch (e) {
+    return null;
+  }
+}
+
+var metadataResult = session.runSql(
+  "SELECT COUNT(*) FROM information_schema.schemata " +
+  "WHERE schema_name = 'mysql_innodb_cluster_metadata'"
+);
+
+var metadataExists = Number(metadataResult.fetchOne()[0]) > 0;
+var cluster;
+
+if (!metadataExists) {
+  print("No existing cluster metadata found. Creating " + clusterName + ".");
+
+  cluster = dba.createCluster(clusterName, {
+    communicationStack: "MYSQL",
+    memberSslMode: "DISABLED",
+    manualStartOnBoot: false,
+    autoRejoinTries: 3
+  });
+
+  print("Adding worker: " + workerAddress);
+
+  cluster.addInstance(
+    {
+      user: "{{ mysql_cluster_admin_user }}",
+      password: "{{ mysql_cluster_admin_password }}",
+      host: "{{ hostvars[groups['workers'][0]].ansible_host }}",
+      port: {{ mysql_server_port }}
+    },
+    {
+      recoveryMethod: "clone"
+    }
+  );
+
+} else {
+  print("Existing cluster metadata found. Preserving " + clusterName + ".");
+
+  // Allow Group Replication time to start automatically after a VM reboot.
+  cluster = getExistingCluster();
+
+  for (var attempt = 0; cluster === null && attempt < 30; attempt++) {
+    print("Waiting for Group Replication startup (" + (attempt + 1) + "/30).");
+    os.sleep(2);
+    cluster = getExistingCluster();
+  }
+
+  if (cluster === null) {
+    print("Group Replication remains inactive. Attempting outage recovery.");
+
+    var lastRecoveryError = null;
+
+    for (
+      var recoveryAttempt = 1;
+      recoveryAttempt <= 12 && cluster === null;
+      recoveryAttempt++
+    ) {
+      print("Recovery attempt " + recoveryAttempt + "/12.");
+
+      cluster = getExistingCluster();
+
+      if (cluster !== null) {
+        break;
+      }
+
+      try {
+        cluster = dba.rebootClusterFromCompleteOutage(clusterName);
+      } catch (recoveryError) {
+        lastRecoveryError = recoveryError;
+        print("Recovery attempt failed: " + recoveryError.message);
+        cluster = getExistingCluster();
+      }
+
+      if (cluster === null && recoveryAttempt < 12) {
+        print("Waiting 10 seconds before retrying recovery.");
+        os.sleep(10);
+      }
+    }
+
+    if (cluster === null) {
+      throw new Error(
+        "Cluster recovery failed after 12 attempts. " +
+        "No cluster object is available. Check MySQL logs and " +
+        "member connectivity before attempting manual recovery. " +
+        "Last error: " +
+        (lastRecoveryError ? lastRecoveryError.message : "unknown")
+      );
+    }
+  }
+
+  // Check the worker only when recovering an existing cluster.
+  var status = cluster.status();
+  var topology = status.defaultReplicaSet.topology;
+
+  var workerMember = null;
+
+  Object.keys(topology).forEach(function (key) {
+    if (key === workerAddress || topology[key].address === workerAddress) {
+      workerMember = topology[key];
+    }
+  });
+
+  var workerConnection = {
+    user: "{{ mysql_cluster_admin_user }}",
+    password: "{{ mysql_cluster_admin_password }}",
+    host: "{{ hostvars[groups['workers'][0]].ansible_host }}",
+    port: {{ mysql_server_port }}
+  };
+
+  if (!workerMember) {
+    print("Worker is missing from cluster metadata. Adding " + workerAddress + ".");
+
+    cluster.addInstance(workerConnection, {
+      recoveryMethod: "clone"
+    });
+
+  } else if (workerMember.status !== "ONLINE") {
+    print("Worker is registered but not ONLINE. Attempting to rejoin it.");
+
+    cluster.rejoinInstance(workerConnection, {
+      recoveryMethod: "incremental"
+    });
+
+  } else {
+    print("Worker is already ONLINE.");
+  }
+}
+
+// Ensure the requested multi-primary topology is active.
+var currentStatus = cluster.status();
+
+if (currentStatus.defaultReplicaSet.topologyMode !== "Multi-Primary") {
+  print("Switching cluster to multi-primary mode.");
+  cluster.switchToMultiPrimaryMode();
+} else {
+  print("Cluster is already in multi-primary mode.");
+}
+
+// Validate the two expected members.
+var finalStatus = cluster.status({extended: 1});
+var finalTopology = finalStatus.defaultReplicaSet.topology;
+
+[masterAddress, workerAddress].forEach(function (address) {
+  var member = finalTopology[address];
+
+  if (!member || member.status !== "ONLINE" || member.mode !== "R/W") {
+    throw new Error(
+      "Cluster validation failed for " + address +
+      ". Expected ONLINE and R/W. Actual status: " +
+      JSON.stringify(member || null)
+    );
+  }
+});
+
+if (finalStatus.defaultReplicaSet.topologyMode !== "Multi-Primary") {
+  throw new Error("Cluster validation failed: expected Multi-Primary mode.");
+}
+
+print("Cluster validation successful.");
+print("Final cluster status:");
+print(JSON.stringify(finalStatus, null, 2));

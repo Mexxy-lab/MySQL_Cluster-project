@@ -1,0 +1,4 @@
+# =============================================================================
+
+# Collect MySQL stats
+* * * * * root sh /usr/local/ops/bin/collect_mysql_stats.sh 10 > /tmp/collect_mysql_stats_cron.log 2>&1

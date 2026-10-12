@@ -1,0 +1,8 @@
+# Enable to use MySQL {{mysql_variant_version}}
+[mysql-community]
+name=MySQL {{mysql_variant_version}} Community Server
+baseurl=http://repo.mysql.com/yum/mysql-{{mysql_variant_version}}-community/el/{{ ansible_distribution_major_version  }}/$basearch/
+enabled=0
+gpgcheck=0
+gpgkey=file:///etc/pki/rpm-gpg/RPM-GPG-KEY-mysql
+

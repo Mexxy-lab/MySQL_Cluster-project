@@ -1,0 +1,15 @@
+---
+mysql_repo_url: "https://repo.mysql.com/yum/mysql-8.4-community/el/9/$basearch/"
+mysql_repo_gpg_key: "https://repo.mysql.com/RPM-GPG-KEY-mysql-2023"
+
+mysql_server_port: 3306
+mysql_group_replication_port: 33061
+mysql_bind_address: "0.0.0.0"
+
+mysql_cluster_name: "labInnoDBCluster"
+mysql_cluster_admin_user: "icadmin"
+mysql_cluster_admin_host: "%"
+
+# Workbench and cluster access are restricted to this LAN subnet by firewalld.
+# Change this if your Windows host is on a different subnet.
+mysql_workbench_source_cidr: "192.168.1.0/24"

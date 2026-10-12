@@ -1,0 +1,56 @@
+---
+# Configure MySQL Installation Playbook Role: install_ux_env_settings_dep
+# This Role Does: Set up DB Unix OS user environment.
+
+- name: install pakage yum-utils - needed tool - yum-complete-transaction
+  yum: name=yum-utils state=present
+
+# - name:  clear yum cache
+#   shell: yum-complete-transaction --cleanup-only
+#   ignore_errors: True
+
+- name:  clear yum cache
+  shell: yum clean all
+  ignore_errors: True
+
+- name: install cronie package
+  yum: name=db4-devel state=installed
+  when: (ansible_distribution == "CentOS" and ansible_distribution_major_version < "7")
+
+- name: Install Core Packages to setup DB OS User env.
+  yum:
+    state: present
+    name:
+      - wget
+      - procps
+      - tar
+      - bzip2
+      - gcc
+      - make
+      - telnet
+      - nc
+      - tzdata
+      - openssl-devel
+      - zip
+      - unzip
+      - zlib-devel
+      - sqlite-devel
+      - bzip2-devel
+      - ncurses-devel
+      - readline-devel
+      - tk-devel
+      - xz-devel
+      - gcc-c++
+      - libaio
+      - zsh
+      - coreutils
+      - fping
+
+- name: Disable Selinux
+  selinux: state=disabled
+  ignore_errors: True
+
+- name: Stop and Disable firewalld if present - centos 7 and above
+  service: name=firewalld enabled=no state=stopped
+  when: (ansible_distribution == "CentOS" and ansible_distribution_major_version >= "7")
+  ignore_errors: True

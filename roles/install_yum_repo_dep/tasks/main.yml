@@ -1,0 +1,26 @@
+---
+# Configure MySQL Installation Playbook Role: install_yum_repo_dep
+# This Role Does: Set up repos for the required mysql packages.
+
+- name: bootstrap percona.repo
+  template: src=percona.repo
+        dest=/etc/yum.repos.d/percona.repo
+        owner=root group=root mode=0644
+
+- name: bootstrap mariadb-repo
+  template: src=mariadb-repo
+        dest=/etc/yum.repos.d/mariadb.repo
+        owner=root group=root mode=0644
+
+# -- set up the epel repository: Starts
+- name: bootstrap epel-release install
+  copy: src=ansible-bootstrap-epel.repo
+        dest=/etc/yum.repos.d/
+        owner=root group=root mode=0644
+# -- set up the epel repository: Ends. -- #
+
+# -- set up oracle community mysql server repo -- #
+- name: set up oracle cummunity mysql server repo
+  template: src=oracle_mysql.repo
+        dest=/etc/yum.repos.d/oracle_mysql.repo
+        owner=root group=root mode=0644

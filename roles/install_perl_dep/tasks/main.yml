@@ -1,0 +1,29 @@
+---
+# Configure MySQL Installation Playbook Role: install_perl_dep
+# This Role Does: Check Perl and perl related packages are installed and configures.
+
+- name: Install perl Packages for CentOS
+  yum:
+    state: present
+    name:
+      - gcc
+      - perl
+      - perl-devel
+      - perl-CPAN
+  when: (ansible_distribution == 'CentOS' or ansible_distribution == 'Red Hat Enterprise Linux')
+
+- name: install cronie package
+  yum: name=perl-App-cpanminus state=installed
+  when: (ansible_distribution == "CentOS" and ansible_distribution_major_version >= "7")
+
+- name: Deploy cpamn cmd tool if not present.
+  copy: src=cpanm
+        dest=/usr/bin/cpan
+        owner=root group=root mode=0755
+        force=no
+  when: (ansible_distribution == "CentOS" and ansible_distribution_major_version < "7")
+
+
+
+
+

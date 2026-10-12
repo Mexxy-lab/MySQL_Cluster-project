@@ -1,0 +1,1 @@
+#0 * * * * root sh /usr/local/ops/bin/check_promotable_slave.sh > /tmp/check_promotable_slave.log 2>&1

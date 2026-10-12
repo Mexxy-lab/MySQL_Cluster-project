@@ -1,0 +1,176 @@
+---
+- name: Install required packages
+  ansible.builtin.dnf:
+    name:
+      - ca-certificates
+      - firewalld
+    state: present
+
+- name: Configure the official MySQL 8.4 repository
+  ansible.builtin.template:
+    src: mysql-8.4.repo.j2
+    dest: /etc/yum.repos.d/mysql-8.4.repo
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Refresh DNF metadata for MySQL repositories
+  ansible.builtin.command:
+    cmd: dnf makecache --refresh
+  changed_when: false
+
+- name: Install MySQL Server and MySQL Shell
+  ansible.builtin.dnf:
+    name:
+      - mysql-community-server
+      - mysql-shell
+    state: present
+    update_cache: true
+
+- name: Ensure MySQL loads the custom configuration directory
+  ansible.builtin.lineinfile:
+    path: /etc/my.cnf
+    line: "!includedir /etc/my.cnf.d"
+    state: present
+  notify: Restart MySQL
+
+- name: Configure MySQL for InnoDB Cluster
+  ansible.builtin.template:
+    src: mysqld.cnf.j2
+    dest: /etc/my.cnf.d/innodb-cluster.cnf
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Restart MySQL
+
+- name: Ensure firewalld is enabled and running
+  ansible.builtin.systemd:
+    name: firewalld
+    enabled: true
+    state: started
+
+- name: Allow MySQL client connections from the configured LAN
+  ansible.builtin.command:
+    argv:
+      - firewall-cmd
+      - --permanent
+      - "--add-rich-rule=rule family=\"ipv4\" source address=\"{{ mysql_workbench_source_cidr }}\" port port=\"{{ mysql_server_port }}\" protocol=\"tcp\" accept"
+  register: mysql_client_firewall
+  changed_when: "'ALREADY_ENABLED' not in (mysql_client_firewall.stderr | default(''))"
+  notify: Reload firewalld
+
+- name: Allow Group Replication traffic from each cluster member
+  ansible.builtin.command:
+    argv:
+      - firewall-cmd
+      - --permanent
+      - "--add-rich-rule=rule family=\"ipv4\" source address=\"{{ hostvars[item].ansible_host }}\" port port=\"{{ mysql_group_replication_port }}\" protocol=\"tcp\" accept"
+  loop: "{{ groups['master'] + groups['workers'] }}"
+  register: mysql_replication_firewall
+  changed_when: "'ALREADY_ENABLED' not in (mysql_replication_firewall.stderr | default(''))"
+  notify: Reload firewalld
+
+- name: Apply pending MySQL and firewall changes
+  ansible.builtin.meta: flush_handlers
+
+- name: Start and enable MySQL
+  ansible.builtin.systemd:
+    name: mysqld
+    enabled: true
+    state: started
+
+- name: Check whether the configured MySQL root password already works
+  ansible.builtin.command:
+    argv:
+      - mysql
+      - --protocol=socket
+      - -uroot
+      - -Nse
+      - SELECT 1
+  environment:
+    MYSQL_PWD: "{{ mysql_root_password }}"
+  register: mysql_root_password_check
+  changed_when: false
+  failed_when: false
+  no_log: true
+
+- name: Read the temporary root password from the fresh installation
+  ansible.builtin.shell:
+    cmd: "awk '/temporary password/ {password=$NF} END {if (password != \"\") print password; else exit 1}' /var/log/mysqld.log"
+  register: mysql_temporary_root_password
+  changed_when: false
+  when: mysql_root_password_check.rc != 0
+  no_log: true
+
+- name: Set the MySQL root password on a fresh installation
+  ansible.builtin.command:
+    argv:
+      - mysql
+      - --connect-expired-password
+      - --protocol=socket
+      - -uroot
+    stdin: "ALTER USER 'root'@'localhost' IDENTIFIED BY '{{ mysql_root_password }}';"
+  environment:
+    MYSQL_PWD: "{{ mysql_temporary_root_password.stdout }}"
+  register: mysql_set_root_password_result
+  changed_when: mysql_set_root_password_result.rc == 0
+  failed_when: false
+  when: mysql_root_password_check.rc != 0
+  no_log: true
+
+- name: Display sanitized root password initialization error
+  ansible.builtin.debug:
+    msg:
+      - "MySQL command exit code: {{ mysql_set_root_password_result.rc }}"
+      - "Error: {{ mysql_set_root_password_result.stderr | default('') | replace(mysql_temporary_root_password.stdout, '[REDACTED]') | replace(mysql_root_password, '[REDACTED]') }}"
+  when:
+    - mysql_root_password_check.rc != 0
+    - mysql_set_root_password_result.rc != 0
+
+- name: Stop if root password initialization failed
+  ansible.builtin.fail:
+    msg: "MySQL root password initialization failed. Review the sanitized error above."
+  when:
+    - mysql_root_password_check.rc != 0
+    - mysql_set_root_password_result.rc != 0
+
+- name: Install the local MySQL Shell instance configuration script
+  ansible.builtin.template:
+    src: configure_instance.js.j2
+    dest: /root/configure_instance.js
+    owner: root
+    group: root
+    mode: "0600"
+  no_log: true
+
+- name: Configure this MySQL instance for InnoDB Cluster
+  ansible.builtin.command:
+    argv:
+      - mysqlsh
+      - --no-wizard
+      - --js
+      - --file
+      - /root/configure_instance.js
+  register: mysql_instance_configuration
+  changed_when: "'configured' in (mysql_instance_configuration.stdout | lower)"
+  failed_when: false
+  no_log: true
+
+- name: Display sanitized MySQL Shell configuration error
+  ansible.builtin.debug:
+    msg:
+      - "MySQL Shell exit code: {{ mysql_instance_configuration.rc }}"
+      - >-
+        Error:
+        {{ mysql_instance_configuration.stderr | default('') }}
+  when: mysql_instance_configuration.rc != 0
+
+- name: Stop if instance configuration failed
+  ansible.builtin.fail:
+    msg: "MySQL Shell instance configuration failed. Review the error above."
+  when: mysql_instance_configuration.rc != 0
+
+- name: Remove the temporary instance configuration script
+  ansible.builtin.file:
+    path: /root/configure_instance.js
+    state: absent

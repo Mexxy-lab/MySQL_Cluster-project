@@ -1,0 +1,56 @@
+// Configure a fresh or partially configured MySQL instance.
+var rootConnection = {
+  user: "root",
+  password: "{{ mysql_root_password }}",
+  host: "localhost",
+  port: {{ mysql_server_port }}
+};
+
+shell.connect(rootConnection);
+
+var session = shell.getSession();
+
+var accountResult = session.runSql(
+  "SELECT COUNT(*) FROM mysql.user " +
+  "WHERE user='{{ mysql_cluster_admin_user }}' " +
+  "AND host='{{ mysql_cluster_admin_host }}'"
+);
+
+var accountExists = Number(accountResult.fetchOne()[0]) > 0;
+
+var options = {
+  restart: true,
+  clusterAdmin:
+    "'{{ mysql_cluster_admin_user }}'@'{{ mysql_cluster_admin_host }}'"
+};
+
+if (!accountExists) {
+  options.clusterAdminPassword = "{{ mysql_cluster_admin_password }}";
+  options.clusterAdminPasswordExpiration = "NEVER";
+}
+
+var metadataSchemaResult = session.runSql(
+  "SELECT COUNT(*) FROM information_schema.schemata " +
+  "WHERE schema_name = 'mysql_innodb_cluster_metadata'"
+);
+var metadataSchemaExists =
+  Number(metadataSchemaResult.fetchOne()[0]) > 0;
+
+var belongsToCluster = false;
+
+if (metadataSchemaExists) {
+  var memberResult = session.runSql(
+    "SELECT COUNT(*) " +
+    "FROM mysql_innodb_cluster_metadata.instances " +
+    "WHERE mysql_server_uuid = @@server_uuid"
+  );
+  belongsToCluster = Number(memberResult.fetchOne()[0]) > 0;
+}
+
+if (belongsToCluster) {
+  print("Instance already belongs to an InnoDB Cluster; skipping configureInstance().");
+} else {
+  print("Checking MySQL instance prerequisites with AdminAPI.");
+  dba.configureInstance(rootConnection, options);
+  print("Instance configuration completed.");
+}

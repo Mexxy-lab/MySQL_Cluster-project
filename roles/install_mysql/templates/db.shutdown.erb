@@ -1,0 +1,5 @@
+NEW_LOG=`date '+shutdown_%m_%d_%Y.log'`
+echo "Shutdown : " `date`  > ${LOG_LOC}/${NEW_LOG} 2>&1  &
+mysqladmin --defaults-file=${CNF_FILE} -u{{ db_os_user }} "shutdown" >> ${LOG_LOC}/${NEW_LOG} 2>&1 &
+sleep 5
+cat ${LOG_LOC}/${NEW_LOG}

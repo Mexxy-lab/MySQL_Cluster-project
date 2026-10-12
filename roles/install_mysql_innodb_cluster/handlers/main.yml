@@ -1,0 +1,10 @@
+---
+- name: Restart MySQL
+  ansible.builtin.systemd:
+    name: mysqld
+    state: restarted
+
+- name: Reload firewalld
+  ansible.builtin.command:
+    cmd: firewall-cmd --reload
+  changed_when: true

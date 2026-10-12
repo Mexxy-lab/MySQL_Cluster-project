@@ -1,0 +1,60 @@
+# -- Lines that begin with '#' are ignored & are treated as comments.
+# -- Lines that begin with '[' hold names of ansible roles within the ansible playbook.
+# -- This file contains the key variables for each role(within square bracket[]) to execute successfully.
+# -- Make changes to the variable values as you see fit for your target environment.
+# -- Variables entered here will be used to populate file: <role-name>/vars/main.yml.
+
+[install_mysql]
+mysql_variant=                     #  Specify which vendor's MySQL to be installed:( values: mariadb|percona|oracle-mysql ) - defaults to: percona.
+mysql_variant_version=8.0             #  Specify mysql version( values: 8.0|5.7|5.6|5.5|latest ) - for chosen mysql variant - defaults to: 8.0.
+db_port=                           #  Specify mysql port. e.g:3310 - defaults to 3306.
+db_os_user=dbpoffbzii                        #  Operating System User MySQL should run as. eg: dbpoffbzii - defaults to mysql.
+db_os_user_basedir=/db/p/offbzii                #  Path to MySQL DATA Directory. e.g: /db/p/offbzii - defaults to /var/lib/mysql.
+sid=OFFBZIIP1                               #  Special DBA MySQL instance identification e.g: OFFBZIIP1 - defaults to NOSID1
+key_buffer_size_in_Bytes=          #  MyISAM Key Buffer size e.g: 25MB or 25GB - defaults to 3% of system RAM.
+innodb_buffer_pool_size_in_Bytes=  #  InnoDB Engine Buffer pool size e.g 25MB or 25GB - defaults to 65% of system RAM.
+rep_user=                          #  Replication user - defaults to repl
+rep_pass=                          #  Replication password - defaults to repl
+default_storage_engine=            #  Default MySQL Storage engine - defaults to INNODB
+default_cnf_options=               #  Specify custom my.cnf option you want to include separated by semi-colon e.g "max_connections=1024;max_binlog_size=1G;innodb_fast_shutdown=1"
+deploy_default_repo=               #  Use Yum Repo From the Internet( values: true|false ) - defaults to: false
+enable_percona_mysql_auditing=true #  Enable MySQL User Access Auditing( values: true|false ) - defaults to: false.
+allow_mysql_restart=               #  Trigger MySQL to Restart if a change in MySQL config file is detected(values: true|false ) - defaults to: false
+performance_schema=                #  Enable or disable performance_schema (MySQL database Preformance metrics schema - values: ON|OFF ) - Defaults to: ON
+
+
+[install_filebeat]
+db_os_user=                        #  Operating System User MySQL should run as. eg: dbpoffbzii - defaults to mysql.
+sid=                               #  Special DBA MySQL instance identification e.g: OFFBZIIP1 - defaults to NOSID1
+filebeat_client_host_environment=  #  Specify if the client host is in DEV, QA, TEST, PROD cycles.
+port=                              #  Specify mysql port. e.g:3310 - defaults to 3306.
+kibana_host_url=                   #  Specify Kibana hostname or IP address. - defaults to 10.121.146.140.
+kibana_port_number=                #  Specify Kibana port number. - Defaults to 5601.
+logstash_host_url=                 #  Specify Logstash hostname or IP Address - defaults to 10.121.146.140.
+logstash_port_number=              #  Specify Logstash port number. Defaults to 5044
+full_path_to_mysql_audit_log=      #  Full path to sudit log file. Defaults to ~{{ db_os_user }}/{{ sid }}/logs/audit.log
+
+[mysql_replication_setup]
+enable_ssl_replication=            #  Enable ssl replication( values: true|false ) - defaults to: false.
+rep_user=                          #  Replication user - defaults to repl
+rep_pass=                          #  Replication user - defaults to repl
+port=                              #  Replication port - defaults to 3306
+
+[install_check_mk_nagios_agent]
+monitoring_server_ip=                  # Nagios Server - hostname or IP
+
+
+# - Roles with varaibles that don't need changing - #
+[install_yum_repo_dep]
+deploy_default_repo=               #  ( values: true|false ) - defaults to: false
+
+[install_nagios_nrpe_client]
+deploy_default_repo=
+
+
+[install_ux_env_settings_dep]
+
+# - Roles below have no variables yet - #
+[install_cron_dep]
+[install_perl_dep]
+[install_tar_dep]

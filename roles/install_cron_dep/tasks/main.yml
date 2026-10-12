@@ -1,0 +1,19 @@
+---
+# Configure MySQL Installation Playbook Role:
+# This Role Does: Checks cronie package is installed and crond service is enabled and running.
+
+# Needed to get ansible to work without erroring
+# - name: install libselinux-python
+#  yum: name=libselinux-python state=present
+
+- name: install cronie package
+  ansible.builtin.dnf:
+    name:
+      - cronie
+    state: installed
+
+- name: enable crond service
+  service: name=crond state=started enabled=yes
+
+
+

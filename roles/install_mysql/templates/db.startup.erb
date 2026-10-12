@@ -1,0 +1,9 @@
+NEW_LOG=`date '+startup_%m_%d_%Y.log'`
+echo "Startup : " `date` > ${LOG_LOC}/${NEW_LOG} 2>&1  &
+{% if  (is_mysql57|bool and true) or (is_mysql80|bool and true) or ( (is_percona|bool and true ) and (is_latest|bool and true) ) %}
+nohup mysqld --defaults-file=${CNF_FILE} >> ${LOG_LOC}/${NEW_LOG} 2>&1 &
+{% else %}
+nohup mysqld_safe --defaults-file=${CNF_FILE} >> ${LOG_LOC}/${NEW_LOG} 2>&1 &
+{% endif %}
+sleep 5
+cat ${LOG_LOC}/${NEW_LOG}

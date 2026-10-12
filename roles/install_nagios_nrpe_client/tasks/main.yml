@@ -1,0 +1,82 @@
+---
+# Configure NRPE(Nagios Remote Protocol Executor) plugin + agent Installation Playbook Role: install_nagios_nrpe_client
+# This Role Does: Sets up and configures NagiosXI NRPE plugin + agent packages.
+
+# the nrpe client agent and plugin is available via epel repo.
+- name: epel repository enable
+  ini_file: dest=/etc/yum.repos.d/epel.repo
+            section=epel
+            option=enabled
+            value=1
+  when:
+    - (deploy_default_repo) # is_true_deploy_default_repo|bool and true
+  tags: install_mysql
+# -- set up the epel repository: Ends #
+
+- name: Install NRPE Client Package and Plugins
+  yum: name={{ item }} state=present
+  with_items:
+    - nrpe
+    - nagios-plugins-all
+    - openssl
+
+- name: enable nrpe service
+  service: name=nrpe state=started enabled=yes
+  when:
+    - ( nagios_hosts  !=  None )
+
+- name: Tell NRPE the hostname/ip of the nagios/icinga monitoring host
+  replace: dest=/etc/nagios/nrpe.cfg
+        regexp="^allowed_hosts\s*=\s*127.0.0.1,?.*"
+        replace=allowed_hosts=127.0.0.1,{{nagios_hosts}}
+  when:
+    - ( nagios_hosts  !=  None )
+  notify:
+    - restart nrpe
+
+
+- name: disable epel repository
+  ini_file: dest=/etc/yum.repos.d/epel.repo
+            section=epel
+            option=enabled
+            value=0
+  when:
+    - (deploy_default_repo) # is_true_deploy_default_repo|bool and true
+
+- name: Drop local_check script for mysql health - npre_mysql_health_plugin.pl to /usr/lib64/nagios/plugins/npre_mysql_health_plugin.pl.
+  template: src=npre_mysql_health_plugin.pl
+            dest=/usr/lib64/nagios/plugins/npre_mysql_health_plugin.pl
+            owner=nrpe group=nrpe mode=0755
+            force=yes
+
+- name: set up mysql_instances_running check
+  copy: content="command[check_mysql_instances_running]=/usr/lib64/nagios/plugins/npre_mysql_health_plugin.pl --check_mysql_instances_running" dest=/etc/nrpe.d/check_mysql_instances_running.cfg
+        mode=0644
+  when:
+    - ( nagios_hosts  !=  None )
+  notify:
+    - restart nrpe
+
+- name: set up mysql_used_connections check
+  copy: content="command[check_mysql_used_connections]=/usr/lib64/nagios/plugins/npre_mysql_health_plugin.pl --check_mysql_used_connections" dest=/etc/nrpe.d/check_mysql_used_connections.cfg
+        mode=0644
+  when:
+    - ( nagios_hosts  !=  None )
+  notify:
+    - restart nrpe
+
+- name: set up mysql_slaves_running check
+  copy: content="command[check_mysql_slaves_running]=/usr/lib64/nagios/plugins/npre_mysql_health_plugin.pl --check_mysql_slaves_running" dest=/etc/nrpe.d/check_mysql_slaves_running.cfg
+        mode=0644
+  when:
+    - ( nagios_hosts  !=  None )
+  notify:
+    - restart nrpe
+
+- name: set up mysql_replication_latency check
+  copy: content="command[check_mysql_replication_latency]=/usr/lib64/nagios/plugins/npre_mysql_health_plugin.pl --check_mysql_replication_latency" dest=/etc/nrpe.d/check_mysql_replication_latency.cfg
+        mode=0644
+  when:
+    - ( nagios_hosts  !=  None )
+  notify:
+    - restart nrpe

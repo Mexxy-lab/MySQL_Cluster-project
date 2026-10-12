@@ -1,0 +1,179 @@
+---
+# Configure MySQL Installation Playbook Role:  setup_mysql_replication
+# This Role Does: Sets up mysql native replication between a master node/instance and a slave node/instance
+
+# This role should only run/execute if a value is provided for variable master_host
+# provide the master_host value in the host inventory file thus:
+# SHELL>  vim  hosts
+# 192.168.56.103  master_host=192.168.56.105
+
+## For master <==> master set up do
+# SHELL>  vim  hosts
+# 192.168.56.103  master_host=192.168.56.105
+# 192.168.56.105  master_host=192.168.56.103
+
+- name: Get temporary Local Instance of MySQL SID Name
+  shell: "mysql  -u{{rep_user}} -P {{port}}  -p{{rep_pass}}  --protocol=tcp  -BNse 'select sid from dbadb.sid_info;' | awk '{print $1}'"
+  register: tmp_local_mysql_sid
+  when: ( master_host is defined ) and  ( master_host != None )
+  tags: mysql_replication
+
+- name: set local_mysql_sid
+  set_fact: local_mysql_sid={{ tmp_local_mysql_sid.stdout }}
+  when:  ( master_host is defined ) and  ( master_host != None )
+  tags: mysql_replication
+
+- debug: msg="local_mysql_sid is {{ local_mysql_sid }}"
+  when:  ( master_host is defined ) and  ( master_host != None )
+  tags: mysql_replication
+
+- name: Get a tmp_master_log_file - master_log_file place holder
+  shell: "mysql -h{{master_host}} -u{{rep_user}} -P {{port}}  -p{{rep_pass}}  -BNse 'show master status;'  | awk '{print $1}'"
+  register: tmp_master_log_file
+  when: ( master_host is defined ) and  ( master_host != None )
+  tags: mysql_replication
+
+- name: set master_log_file
+  set_fact: master_log_file={{ tmp_master_log_file.stdout }}
+  when:  ( master_host is defined ) and  ( master_host != None )
+  tags: mysql_replication
+
+
+- name: Get a tmp_master_log_position - master_log_position place holder
+  shell: "mysql -h{{master_host}} -u{{rep_user}} -P {{port}}  -p{{rep_pass}}  -BNse 'show master status;'  | awk '{print $2}'"
+  register: tmp_master_log_position
+  when: ( master_host is defined ) and  ( master_host != None )
+  tags: mysql_replication
+
+- name: set master_log_position
+  set_fact: master_log_position={{ tmp_master_log_position.stdout }}
+  when:  ( master_log_file is defined ) and  ( master_log_file != None )
+  tags: mysql_replication
+
+- debug: msg="master_log_file is {{ master_log_file }} and master_log_position is {{ master_log_position }}"
+  when:  ( master_log_file is defined ) and  ( master_log_file != None )
+  tags: mysql_replication
+
+- name: Check if replication is set.
+  shell: "mysql -u{{rep_user}} -P {{port}}  -p{{rep_pass}} --protocol=tcp  -e 'show slave status ' | grep -i 'Master_Host'"
+  register: replication_is_set
+  when: ( master_host is defined ) and  ( master_host != None )
+  ignore_errors: True
+  tags: mysql_replication
+
+- name: set up replication 1
+  shell: mysql --defaults-file=/etc/mysql_inventory_dir/{{ local_mysql_sid }}.my.cnf  -BNse "stop slave; CHANGE MASTER TO  MASTER_HOST='{{master_host}}', MASTER_USER='{{rep_user}}', MASTER_PASSWORD='{{rep_pass}}', MASTER_PORT={{port}}, MASTER_LOG_FILE='{{master_log_file}}', MASTER_LOG_POS={{master_log_position}}; start slave;"
+  become_user:  "{{nrpe_user}}"
+  become: true
+  become_method: sudo
+  when:
+    - ( master_host is defined ) and  ( master_host != None )
+    - ( master_log_file is defined ) and  ( master_log_file != None )
+    - ( master_log_position is defined ) and  ( master_log_position != None )
+    - ( gtid_auto_replication == false )
+    - replication_is_set.failed == True
+  tags: mysql_replication
+
+- name: set up replication 2
+  shell: mysql  --defaults-file=/etc/mysql_inventory_dir/{{ local_mysql_sid }}.my.cnf  -BNse "stop slave; CHANGE MASTER TO  MASTER_HOST='{{master_host}}', MASTER_USER='{{rep_user}}', MASTER_PASSWORD='{{rep_pass}}', MASTER_PORT={{port}}, MASTER_AUTO_POSITION = 1; start slave;"
+  become_user:  "{{nrpe_user}}"
+  become: true
+  become_method: sudo
+  when:
+    - ( master_host is defined ) and  ( master_host != None )
+    - ( master_log_file is defined ) and  ( master_log_file != None )
+    - ( master_log_position is defined ) and  ( master_log_position != None )
+    - ( gtid_auto_replication == true )
+    - replication_is_set.failed == True
+  tags: mysql_replication
+
+- name: Check if ssl replication is set.
+  shell: "mysql -u{{rep_user}} -P {{port}}  -p{{rep_pass}}  --protocol=tcp  -e 'show slave status \\G'| grep -iP 'Master_SSL_Allowed:\\s*Yes'"
+  register: ssl_replication_is_set
+  when:
+    - (( master_host is defined ) and  ( master_host != None ) )
+    - ( enable_ssl_replication )
+  ignore_errors: True
+  tags: mysql_ssl_replication
+
+- name: Get MySQL ssl_cert File place holder
+  shell: mysql -u{{rep_user}} -P {{port}}  -p{{rep_pass}}  --protocol=tcp   -BNse "show variables like '%ssl_cert%'"  | awk '{print $2}'
+  register: tmp_ssl_cert_file
+  when:
+    - (( master_host is defined ) and  ( master_host != None ) )
+    - ( enable_ssl_replication )
+    - ( ssl_replication_is_set.failed == True )
+  tags: mysql_ssl_replication
+
+- name: set MySQL ssl_cert File
+  set_fact: ssl_cert_file={{ tmp_ssl_cert_file.stdout   | trim }}
+  when:
+    - (( master_host is defined ) and  ( master_host != None ) )
+    - ( enable_ssl_replication )
+    - ( ssl_replication_is_set.failed == True )
+  tags: mysql_ssl_replication
+
+- name: Get MySQL ssl_ca File place holder
+  shell: mysql -u{{rep_user}} -P {{port}}  -p{{rep_pass}}  --protocol=tcp   -BNse "show variables like '%ssl_ca%'"  | awk '{print $2}'
+  register: tmp_ssl_ca_file
+  when:
+    - (( master_host is defined ) and  ( master_host != None ) )
+    - ( enable_ssl_replication )
+    - ( ssl_replication_is_set.failed == True )
+  tags: mysql_ssl_replication
+
+- name: set MySQL ssl_ca File
+  set_fact: ssl_ca_file={{ tmp_ssl_ca_file.stdout  | trim }}
+  when:
+    - (( master_host is defined ) and  ( master_host != None ) )
+    - ( enable_ssl_replication )
+    - ( ssl_replication_is_set.failed == True )
+  tags: mysql_ssl_replication
+
+- name: Get MySQL ssl_key File place holder
+  shell: mysql -u{{rep_user}} -P {{port}}  -p{{rep_pass}}  --protocol=tcp   -BNse "show variables like '%ssl_key%'"  | awk '{print $2}'
+  register: tmp_ssl_key_file
+  when:
+    - (( master_host is defined ) and  ( master_host != None ) )
+    - ( enable_ssl_replication )
+    - ( ssl_replication_is_set.failed == True )
+  tags: mysql_ssl_replication
+
+- name: set MySQL ssl_key File
+  set_fact: ssl_key_file={{ tmp_ssl_key_file.stdout  | trim }}
+  when:
+    - (( master_host is defined ) and  ( master_host != None ) )
+    - ( enable_ssl_replication )
+    - ( ssl_replication_is_set.failed == True )
+  tags: mysql_ssl_replication
+
+- name: Get MySQL ssl_ca_path place holder
+  shell: dirname {{ ssl_key_file | trim }}
+  register: tmp_ssl_ca_path
+  when:
+    - (( master_host is defined ) and  ( master_host != None ) )
+    - ( enable_ssl_replication )
+    - ( ssl_replication_is_set.failed == True )
+  tags: mysql_ssl_replication
+
+
+- name: set MySQL ssl_ca_path
+  set_fact: ssl_ca_path={{ tmp_ssl_ca_path.stdout  | trim }}
+  when:
+    - (( master_host is defined ) and  ( master_host != None ) )
+    - ( enable_ssl_replication )
+    - ( ssl_replication_is_set.failed == True )
+  tags: mysql_ssl_replication
+
+
+- name: set up ssl replication
+  shell: mysql  --defaults-file=/etc/mysql_inventory_dir/{{ local_mysql_sid }}.my.cnf   -BNse  "stop slave;  CHANGE MASTER TO MASTER_SSL=1, MASTER_SSL_CA = '{{ssl_ca_file}}' , MASTER_SSL_CAPATH = '{{ssl_ca_path}}', MASTER_SSL_CERT = '{{ssl_cert_file}}', MASTER_SSL_KEY = '{{ssl_key_file}}'; start slave;"
+  become_user:  "{{nrpe_user}}"
+  become: true
+  become_method: sudo
+  when:
+    - (( master_host is defined ) and  ( master_host != None ) )
+    - ( enable_ssl_replication )
+    - ( ssl_replication_is_set.failed == True )
+  ignore_errors: True
+  tags: mysql_ssl_replication

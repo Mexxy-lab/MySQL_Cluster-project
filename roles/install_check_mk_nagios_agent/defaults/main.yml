@@ -1,0 +1,20 @@
+---
+# This variable below holds the monitoring server(eg. check_mk nagios server) ip or hostname
+check_mk_nagios_hostname_or_ip:
+# Specify which agent configuration method is desired - ssh for agent to server communication via ssh and any via xinetd.
+agent_config_type: ssh
+# agent OS user
+user: root
+# agent OS group
+group: root
+# specify the type of host the agent is -  mysql_db for MySQL server hosts
+agent_host_type:
+# Agent Hostname or ip
+hosts:
+# The include within the main.yml(include_vars: auto_user_credentials.yml) task folder also include variables:
+# automation_secret  ===> this is the automation user password
+# automation_user    ===> this is the automation user
+# Name given to the server site - you can have multiple of these to check groups of servers
+monitoring_sites: prod
+# You can group monitored hosts into folders with nagios + check_mk: examples: os/linux/databases, '/', os/linux/webservers
+folder: '/'

@@ -1,0 +1,13 @@
+---
+
+nrpe_user: nrpe
+#--------------------
+# Replication Setups
+#--------------------
+rep_user: repl
+rep_pass: repl
+port: 3306
+# you can enable ssl replication between master and slave: yes  ==> enables && no ==> disables ssl replication
+enable_ssl_replication: yes
+gtid_auto_replication: false
+

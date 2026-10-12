@@ -1,0 +1,177 @@
+---
+- name: include extra encrypted vars files 1
+  include_vars: encrypted_pass_for_mysql_db_health_check_var_file.yml
+
+- name: include extra encrypted vars files 2
+  include_vars: auto_user_credentials.yml
+
+- name: set host ip.
+  set_fact:
+     host_ip: "{{ hostvars[inventory_hostname]['ansible_default_ipv4']['address']  }}"
+
+- name: install libselinux-python
+  yum: name=libselinux-python state=present
+
+- name: install coreutils - this provides the timeout command needed for custom checks
+  yum: name=coreutils state=present
+
+- name: create staging directory
+  file: path=/tmp/mon_staging  state=directory owner={{ user }} group={{ group }} mode=0755
+
+- name: copy pre-compiled check_mk agent rpm for redhat/centos to target host
+  copy: src=check-mk-agent-1.2.6p16-1.noarch.rpm   dest=/tmp/mon_staging/   owner={{ user }} group={{ group }} mode=0644
+
+- name: install  pre-compiled local check_mk agent rpm file for redhat/centos
+  yum: name=/tmp/mon_staging/check-mk-agent-1.2.6p16-1.noarch.rpm  state=present
+
+- name: Add RSA public key to the remote host
+  authorized_key: user={{ user }}  key="{{ lookup('file', 'nagios_server_id_rsa.public_key') }}"
+  when: agent_config_type == 'ssh'
+
+- name: install xinetd
+  yum: name=xinetd state=present
+  when: agent_config_type == 'any'  or  agent_config_type == 'xinetd' or agent_config_type is not defined
+
+- name: Check if path /etc/xinetd.d/check_mk - exists test 1
+  stat: path=/etc/xinetd.d/check_mk
+  register: check_path1
+  when: agent_config_type == 'any'  or  agent_config_type == 'xinetd' or agent_config_type is not defined
+
+- name: copy check_mk logwatch script to the plugin directory /usr/lib/check_mk_agent/plugins/
+  copy: src=mk_logwatch.py   dest=/usr/lib/check_mk_agent/plugins/mk_logwatch   owner={{ user }} group={{ group }} mode=0755 force=no
+
+- name: copy logwatch configuration file check_mk config directory - /etc/check_mk/logwatch.cfg
+  copy: src=logwatch.cfg   dest=/etc/check_mk/logwatch.cfg   owner={{ user }} group={{ group }} mode=0644 force=no
+
+- name: copy local_check script for mysql backups - mysql_check_backup.pl to  /usr/lib/check_mk_agent/local/mysql_check_backup.pl
+  copy: src=mysql_check_backup.pl dest=/usr/lib/check_mk_agent/local/mysql_check_backup.pl  owner={{ user }} group={{ group }} mode=0755 force=yes
+  when: agent_host_type == 'mysql_db'
+
+- name: copy local_check script for mysql health - mysql_health_status.pl to  /usr/lib/check_mk_agent/local/mysql_health_status.pl
+  copy: src=mysql_health_status.pl dest=/usr/lib/check_mk_agent/local/mysql_health_status.pl   owner={{ user }} group={{ group }} mode=0755 force=yes
+  when: agent_host_type == 'mysql_db'
+
+- name: Check that the /etc/mysql_inventory_dir/mysql_inventory.cnf file exists
+  stat: path=/etc/mysql_inventory_dir/mysql_inventory.cnf
+  register: mysql_inventory_cnf_stat_result
+
+- name: get os db users installed on host
+  shell: cat  /etc/mysql_inventory_dir/mysql_inventory.cnf | grep -vP '^#' | grep -vP '\s*\['
+  register: db_install_info
+  ignore_errors: True
+  when: ( mysql_inventory_cnf_stat_result.stat.exists  == True)
+
+- name: use extracted info - os db user - to create check_mk mysql health plugin - path - /usr/lib/check_mk_agent/local/
+  copy: content="su - {{item.split(';;')[0].split('=')[1]}}  -c 'perl /usr/lib/check_mk_agent/local/mysql_health_status.pl' 2> /dev/null " dest=/usr/lib/check_mk_agent/local/{{item.split(';;')[0].split('=')[1]}}_mysql_health_status.pl mode=0755
+  with_items: "{{db_install_info.stdout_lines | default([]) }}"
+
+
+- name: create check_mk agent check auxiliary scripts directory.
+  file: path=/usr/lib/check_mk_agent_aux_scripts  state=directory owner={{ user }} group={{ group }} mode=0755
+
+- name: Drop DB_Key Decrypt Script.
+  template: src=decrypt_mysql_pass.pl
+            dest=/usr/lib/check_mk_agent_aux_scripts/decrypt_mysql_pass.pl
+            owner={{ user }} group={{ group }} mode=0660
+            force=no
+  when: agent_host_type == 'mysql_db'
+
+- name: Ensure gcc installed
+  yum:  name=gcc state=present
+
+- name: Test for cpanm
+  shell: perl -MApp::cpanminus -e1
+  register: result
+  ignore_errors: true
+
+- name:  Install CPANm
+  shell: curl -L http://cpanmin.us | perl - App::cpanminus
+  when:  result.failed == True   and  agent_host_type == 'mysql_db'
+
+
+- name:  Install Perl Module - Crypt::Blowfish using cpanm cmd tool.
+  cpanm: name=Crypt::Blowfish
+  when: agent_host_type == 'mysql_db'
+
+- name: enable monitoring server access to client using xinetd
+  lineinfile: dest=/etc/xinetd.d/check_mk
+              regexp="^\s*only_from\s*=\s*127.0.0.1 {{check_mk_nagios_hostname_or_ip}}"
+              line="only_from = 127.0.0.1 {{check_mk_nagios_hostname_or_ip}}"
+              insertafter="^\s*#only_from"
+  when:
+    - agent_config_type == 'any' and check_path1.stat.exists and  check_mk_nagios_hostname_or_ip != 'None'
+  notify:
+    - restart xinetd
+
+- name: start xinetd service
+  service: name=xinetd state=started
+  when:
+    - agent_config_type == 'any' and check_path1.stat.exists and  check_mk_nagios_hostname_or_ip != 'None'
+
+
+- name: set multi_vars booleans.
+  set_fact:
+    uri_body_var1: >
+      request={"attributes":{"alias": "","snmp_community": "", "contactgroups": [true, []], "ipaddress": "{{ inventory_hostname  }}"}, "hostname": "{{ ansible_hostname }}", "folder": "{{ folder }}"}
+    uri_body_var2: >
+      request={"hostname": "{{ ansible_hostname }}"}
+    uri_body_var3: >
+      request={"sites":["{{ monitoring_sites }}"]}
+
+# Add this Nagios Server(or this node) to the list of mornitored servers
+- name: add client host to nagios monitoring server
+  uri:
+    url: http://{{ check_mk_nagios_hostname_or_ip }}/{{ monitoring_sites }}/check_mk/webapi.py?action=add_host&_username={{ automation_user }}&_secret={{ automation_secret}}
+    method: POST
+    user: "{{ automation_user }}"
+    password: "{{ automation_secret }}"
+    return_content: yes
+    body: "{{uri_body_var1}}"
+    # body_format: json
+    status_code: 200
+  when:
+    - ( check_mk_nagios_hostname_or_ip is defined ) and ( check_mk_nagios_hostname_or_ip != None )
+
+
+- name: discover services within the client host added to nagios monitoring server
+  uri:
+    url: http://{{ check_mk_nagios_hostname_or_ip }}/{{ monitoring_sites }}/check_mk/webapi.py?action=discover_services&_username={{ automation_user }}&_secret={{ automation_secret}}&mode=refresh
+    method: POST
+    user: "{{ automation_user }}"
+    password: "{{ automation_secret }}"
+    return_content: yes
+    body: "{{uri_body_var2}}"
+    # body_format: json
+    status_code: 200
+  when:
+    - ( check_mk_nagios_hostname_or_ip is defined ) and ( check_mk_nagios_hostname_or_ip != None )
+
+- name: activate changes to the monitoring site - enabling the added node to display on nagios dashboard.
+  uri:
+    url: http://{{ check_mk_nagios_hostname_or_ip }}/{{ monitoring_sites }}/check_mk/wato_ajax_replication.py?site={{ monitoring_sites }}&_username={{ automation_user }}&_secret={{ automation_secret}}
+    method: GET
+    user: "{{ automation_user }}"
+    password: "{{ automation_secret }}"
+    return_content: yes
+    status_code: 200
+  when:
+    - ( check_mk_nagios_hostname_or_ip is defined ) and ( check_mk_nagios_hostname_or_ip != None )
+
+# Doc Link: https://mathias-kettner.de/checkmk_wato_webapi.html
+- name: activate pending changes
+  uri:
+    url: http://{{ check_mk_nagios_hostname_or_ip }}/{{ monitoring_sites }}/check_mk/webapi.py?action=activate_changes&_username={{ automation_user }}&_secret={{ automation_secret}}&mode=all
+    method: POST
+    user: "{{ automation_user }}"
+    password: "{{ automation_secret }}"
+    return_content: yes
+    body: "{{uri_body_var3}}"
+    # body_format: json
+    status_code: 200
+  when:
+    - ( check_mk_nagios_hostname_or_ip is defined ) and ( check_mk_nagios_hostname_or_ip != None )
+  ignore_errors: true
+
+
+
+

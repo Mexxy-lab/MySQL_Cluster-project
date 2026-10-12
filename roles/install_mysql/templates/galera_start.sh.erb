@@ -1,0 +1,86 @@
+#!/bin/bash
+
+set -u
+
+INIT_SCRIPT="/etc/init.d/{{ lc_sid }}"
+GRASTATE="{{ db_os_user_base_data_dir }}/grastate.dat"
+
+# Galera peer addresses.
+# The master checks workers before deciding whether to bootstrap.
+# Workers don't bootstrap; they normally start and retry until the
+# master has formed the Primary Component.
+PEER_ADDRESSES=(
+{% if inventory_hostname == groups['master'][0] %}
+{% for host in groups['workers'] %}
+  "{{ hostvars[host]['host_ip'] }}"
+{% endfor %}
+{% else %}
+  "{{ hostvars[groups['master'][0]]['host_ip'] }}"
+{% endif %}
+)
+
+GALERA_PORT=4567
+
+is_peer_reachable() {
+    local host="$1"
+
+    timeout 2 bash -c "</dev/tcp/${host}/${GALERA_PORT}" \
+        >/dev/null 2>&1
+}
+
+safe_to_bootstrap=0
+
+if [ -s "$GRASTATE" ]; then
+    safe_to_bootstrap=$(
+        awk -F: '/^[[:space:]]*safe_to_bootstrap:/ {
+            gsub(/[[:space:]]/, "", $2);
+            print $2
+        }' "$GRASTATE"
+    )
+fi
+
+MYSQL_DATADIR="{{ db_os_user_base_data_dir }}"
+fresh_datadir=0
+
+# mysql_install_db creates the mysql/ directory before the Galera
+# service is started. Therefore the presence of mysql/ does not mean
+# this is an existing Galera instance.
+#
+# A missing or empty grastate.dat indicates that this datadir has
+# never successfully formed a Galera component.
+if [ ! -s "$GRASTATE" ]; then
+    fresh_datadir=1
+fi
+
+# Only the first master is allowed to perform automatic bootstrap.
+{% if inventory_hostname == groups['master'][0] %}
+
+if [ "$safe_to_bootstrap" = "1" ] || [ "$fresh_datadir" -eq 1 ]; then
+
+    peer_available=0
+
+    for peer in "${PEER_ADDRESSES[@]}"; do
+        if is_peer_reachable "$peer"; then
+            peer_available=1
+            break
+        fi
+    done
+
+    if [ "$peer_available" -eq 0 ]; then
+        if [ "$safe_to_bootstrap" = "1" ]; then
+            echo "Galera: safe_to_bootstrap=1 and no peer is reachable."
+        else
+            echo "Galera: no existing Galera state and no peer is reachable."
+        fi
+
+        echo "Galera: starting {{ lc_sid }} with --wsrep-new-cluster."
+        exec "$INIT_SCRIPT" start --wsrep-new-cluster
+    fi
+
+    echo "Galera: a peer is reachable; starting {{ lc_sid }} normally."
+
+fi
+
+{% endif %}
+
+exec "$INIT_SCRIPT" start

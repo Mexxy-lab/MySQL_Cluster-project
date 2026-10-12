@@ -1,0 +1,295 @@
+#!/usr/bin/env bash
+# MySQL daemon start/stop script.
+
+# Usually this is put in /etc/init.d (at least on machines SYSV R4 based
+# systems) and linked to /etc/rc3.d/S99mysql and /etc/rc0.d/K01mysql.
+# When this is done the mysql server will be started when the machine is
+# started and shut down when the systems goes down.
+
+# Comments to support chkconfig on RedHat Linux
+# chkconfig: 2345 64 36
+# description: A very fast and reliable SQL database engine.
+
+# Comments to support LSB init script conventions
+### BEGIN INIT INFO
+# Provides: mysql
+# Required-Start: $local_fs $network $remote_fs
+# Should-Start: ypbind nscd ldap ntpd xntpd
+# Required-Stop: $local_fs $network $remote_fs
+# Default-Start:  2 3 4 5
+# Default-Stop: 0 1 6
+# Short-Description: start and stop MySQL
+# Description: MySQL is a very fast and reliable SQL database engine.
+### END INIT INFO
+
+ if test -e /usr/bin/mysqld; then
+    echo good  > /dev/null;
+ else
+    bindir_tmp=$(which mysqld);
+    echo "bindir_tmp ==> $( dirname $bindir_tmp)"  > /dev/null;
+    ln -s ${bindir_tmp}   /usr/bin/mysqld
+ fi
+
+
+bindir=/usr/bin
+
+{% if (is_mysql57|bool and false) %}
+mysqld=mysqld_safe
+{% else %} 
+mysqld=mysqld
+{% endif %}
+mysql_cnf_file={{ db_os_user_basedir }}/v1/admin/{{ sid }}/cfg/my_{{ sid  }}.cnf
+mysql_datadir={{ datadir  }}
+pid_file={{ db_os_user_basedir }}/v1/admin/{{ sid  }}/cfg/{{ sid  }}.pid
+socket={{ db_os_user_basedir }}/v1/admin/{{ sid  }}/cfg/{{ sid  }}mysql.sock
+user={{ db_os_user }}
+
+set -o errexit
+set -o nounset
+
+die() { echo "$@"; exit 1; }
+
+basedir="/usr"
+[ -d "$basedir" ] && [ -r "$basedir" ] ||
+  die Something wrong with the basedir at $basedir
+
+datadir="${mysql_datadir}"
+[ -d "$datadir" ] && [ -r "$datadir" ] && [ -w "$datadir" ] ||
+  die Something wrong with the datadir at $datadir
+
+defaults_file="${mysql_cnf_file}"
+[ -f "$defaults_file" ] && [ ! -r "$defaults_file" ] &&
+  die Defaults file at $defaults_file is not readable
+
+# Timeout in seconds that the script waits for mysqld to start, overrideable in
+# my.cnf. 0 means don't wait at all, negative numbers means wait indefinitely.
+service_startup_timeout=900
+
+log_success_msg() { echo " SUCCESS! $@"; }
+log_failure_msg() { echo " ERROR! $@"; }
+
+PATH="/sbin:/usr/sbin:/bin:/usr/bin:$basedir/bin"
+export PATH
+
+case `echo "testing\c"`,`echo -n testing` in
+  *c*,-n*) echo_n=   echo_c=     ;;
+  *c*,*)   echo_n=-n echo_c=     ;;
+  *)       echo_n=   echo_c='\c' ;;
+esac
+
+get_value() { echo "$1" | sed -e 's/^[^=]*=//'; }
+parse_server_arguments() {
+  for arg do
+    case "$arg" in
+      --pid-file=*) pid_file=`get_value "$arg"` ;;
+      --service-startup-timeout=*) service_startup_timeout=`get_value "$arg"` ;;
+    esac
+  done
+}
+
+if [ -f "$defaults_file" ]; then
+  if [ -x ./bin/my_print_defaults ]; then
+    print_defaults="./bin/my_print_defaults"
+  elif [ -x "$bindir/my_print_defaults" ]; then
+    print_defaults="$bindir/my_print_defaults"
+  fi
+  [ -z "$print_defaults" ] && print_defaults="my_print_defaults"
+
+  parse_server_arguments `$print_defaults \
+    --defaults-file="$defaults_file" \
+    mysqld server mysql_server mysql.server`
+fi
+
+to_abs_path() {
+  case "$1" in
+    /* ) echo "$1";;
+    * )  echo "$2/$1" ;;
+  esac
+}
+
+if [ -z "$pid_file" ]; then
+  pid_file=$datadir/`hostname`.pid
+else
+  pid_file=`to_abs_path "$pid_file" "$datadir"`
+fi
+
+if [ -z "$socket" ]; then
+  socket="$datadir"/mysql.sock
+else
+  socket=`to_abs_path "$socket" "$datadir"`
+fi
+
+wait_for_pid() {
+  verb="$1"          # created | removed
+  pid="$2"           # process ID of the program operating on the pid-file
+  pid_file_path="$3" # path to the PID file.
+
+  i=0
+  avoid_race_condition="by checking again"
+
+  while [ $i -ne $service_startup_timeout ]; do
+    case "$verb" in
+      'created')
+        # wait for a PID-file to pop into existence.
+        [ -s "$pid_file_path" ] && i='' && break
+        ;;
+      'removed')
+        # wait for this PID-file to disappear
+        [ ! -s "$pid_file_path" ] && i='' && break
+        ;;
+      *)
+        echo "wait_for_pid() usage: wait_for_pid created|removed pid pid_file_path"
+        exit 1
+        ;;
+    esac
+
+    # if server isn't running, then pid-file will never be updated
+    if [ -n "$pid" ]; then
+      if kill -0 "$pid" 2>/dev/null; then
+        :  # the server still runs
+      else
+        # The server may have exited between the last pid-file check and now.
+        if [ -n "$avoid_race_condition" ]; then
+          avoid_race_condition=""
+          continue  # Check again.
+        fi
+
+        # there's nothing that will affect the file.
+        log_failure_msg "The server quit without updating PID file ($pid_file_path)."
+        return 1  # not waiting any more.
+      fi
+    fi
+
+    echo $echo_n ".$echo_c"
+    i=`expr $i + 1`
+    sleep 1
+  done
+
+  if [ -z "$i" ]; then
+    log_success_msg
+    return 0
+  else
+    log_failure_msg
+    return 1
+  fi
+}
+
+mode=${1:-}
+
+[ $# -ge 1 ] && shift
+
+other_args="$*"
+
+case "$mode" in
+  'start')
+    # Start daemon
+
+    # Safeguard (relative paths, core dumps..)
+    cd "$basedir"
+
+    echo $echo_n "Starting MySQL"
+    if [ -x "$bindir/$mysqld" ]; then
+      if [ -f "$defaults_file" ]; then
+        defaults_opt="--defaults-file=$defaults_file"
+      else
+        defaults_opt="--no-defaults"
+      fi
+      "$bindir/$mysqld" "$defaults_opt" \
+        --user="$user" \
+        --basedir="$basedir" \
+        --datadir="$datadir" \
+        --pid-file="$pid_file" \
+        --socket="$socket" \
+        $other_args >/dev/null 2>&1 &
+      wait_for_pid created "$!" "$pid_file"
+      exit $?
+    else
+      log_failure_msg "Couldn't find MySQL server ($bindir/$mysqld)"
+    fi
+    ;;
+
+  'stop')
+    # Stop daemon. We use a signal here to avoid having to know the
+    # root password.
+
+    if [ -s "$pid_file" ]; then
+      mysqld_pid=`cat "$pid_file"`
+
+      if kill -0 $mysqld_pid 2>/dev/null; then
+        echo $echo_n "Shutting down MySQL"
+        kill $mysqld_pid
+        # mysqld should remove the pid file when it exits, so wait for it.
+        wait_for_pid removed "$mysqld_pid" "$pid_file"
+        exit $?
+      else
+        log_failure_msg "MySQL server process #$mysqld_pid is not running!"
+        rm "$pid_file"
+      fi
+    else
+      log_failure_msg "MySQL server PID file could not be found!"
+    fi
+    ;;
+
+  'restart')
+    # Stop the service and regardless of whether it was running or not,
+    # start it again.
+    if $0 stop $other_args; then
+      $0 start $other_args
+    else
+      log_failure_msg "Failed to stop running server, so refusing to try to start."
+      exit 1
+    fi
+    ;;
+
+  'reload'|'force-reload')
+    if [ -s "$pid_file" ]; then
+      read mysqld_pid < "$pid_file"
+      kill -HUP $mysqld_pid && log_success_msg "Reloading service MySQL"
+      touch "$pid_file"
+    else
+      log_failure_msg "MySQL PID file could not be found!"
+      exit 1
+    fi
+    ;;
+
+  'status')
+    # First, check to see if pid file exists
+    if [ -s "$pid_file" ]; then
+      read mysqld_pid < "$pid_file"
+      if kill -0 $mysqld_pid 2>/dev/null; then
+        log_success_msg "MySQL running ($mysqld_pid)"
+        exit 0
+      else
+        log_failure_msg "MySQL is not running, but PID file exists"
+        exit 1
+      fi
+    else
+      # Try to find appropriate mysqld process
+      mysqld_pid=`pidof "$bindir/mysqld"` || true # Workaround for errexit
+      if [ -z $mysqld_pid ]; then
+        log_failure_msg "MySQL is not running"
+        exit 3
+      else
+        log_failure_msg "MySQL is running but PID file could not be found"
+        exit 4
+      fi
+    fi
+    ;;
+
+  'init'|'initdb')
+    if [ -x "$bindir"/mysql_install_db ]; then
+      "$bindir"/mysql_install_db --basedir="$basedir" --datadir="$datadir"
+    else
+      log_failure_msg "Couldn't find mysql_install_db"
+    fi
+    ;;
+
+  *)
+    # usage
+    basename=`basename "$0"`
+    echo "Usage: $basename {start|stop|restart|reload|force-reload|status|init{db}} [ MySQL server options ]"
+    exit 1
+    ;;
+esac
+
+exit 0

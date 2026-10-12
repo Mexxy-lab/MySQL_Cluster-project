@@ -1,0 +1,391 @@
+## WARNING: This file is managed by a Config Management Tool. Changes to this file will be overwritten. ##
+[mysqld]
+#init_connect = 'call dba_audit.simpleproc(@out_value); set session SQL_SELECT_LIMIT=@out_value'
+#default-time-zone='UTC'
+{% if  (is_mysql80|bool and true) or (is_latest|bool and true)  %}
+default_authentication_plugin=mysql_native_password
+{% endif %}
+# skip_show_database
+basedir   = {{ basedir }}
+datadir   = {{ datadir  }}
+log_error = {{ log_error  }}
+pid-file  = {{ pid_file  }}
+port      = {{ port  }}
+socket    = {{ socket  }}
+tmpdir    = {{ tmpdir  }}
+user      = {{ username  }}
+
+#---------------
+# Basic Settings
+#---------------
+bind-address          = {{ bind_address }}
+{% if  (is_mysql80|bool and true) or (is_latest|bool and true)  %}
+character_set_server  = {{ character_set_unambiguous }}
+collation_server      = {{ collation_unambiguous }}
+{% else %}
+character_set_server  = {{ character_set }}
+collation_server      = {{ collation }}
+{% endif %}
+connect_timeout       = {{ connect_timeout }}
+# language              = {{ language }}
+
+{% if  ( (is_mysql56|bool and true) or (is_mysql55|bool and true) or (is_mysql51|bool and true) or (is_mariadb|bool and true)  or (is_mysql57|bool and true) ) %}
+old_passwords         = {{ old_passwords }}
+{% endif %}
+
+{% if skip_external_locking == true %}
+skip-external-locking
+{% else %}
+# skip-external-locking
+{% endif %}
+
+{% if skip_name_resolve == None %}
+# skip-name-resolve
+{% else %}
+skip-name-resolve
+{% endif %}
+
+{% if skip_networking == None %}
+# skip-networking
+{% else %}
+skip-networking
+{% endif %}
+
+wait_timeout          = {{ wait_timeout }}
+
+{% if (is_mysql56|bool and true)   or (is_mysql57|bool and true)   %}
+explicit_defaults_for_timestamp
+{% endif %}
+
+
+#------------
+# Fine Tuning
+#------------
+back_log                        = {{ back_log }}
+bulk_insert_buffer_size         = {{ bulk_insert_buffer_size }}
+
+{% if expand_fast_index_creation != None %}
+expand_fast_index_creation
+explicit_defaults_for_timestamp = {{ explicit_defaults_for_timestamp }}
+{% endif %}
+
+group_concat_max_len            = {{ group_concat_max_len }}
+join_buffer_size                = {{ join_buffer_size }}
+key_buffer_size                 = {{ key_buffer_size }}
+lower_case_table_names          = {{ lower_case_table_names }}
+max_allowed_packet              = {{ max_allowed_packet }}
+max_connect_errors              = {{ max_connect_errors }}
+max_connections                 = {{ max_connections }}
+max_heap_table_size             = {{ max_heap_table_size }}
+max_sp_recursion_depth          = {{ max_sp_recursion_depth }}
+{% if memlock != None %}
+memlock
+{% endif %}
+open-files-limit                = {{ open_files_limit }}
+port_open_timeout               = {{ port_open_timeout }}
+query_alloc_block_size          = {{ query_alloc_block_size }}
+read_buffer_size                = {{ read_buffer_size }}
+read_rnd_buffer_size            = {{ read_rnd_buffer_size }}
+sort_buffer_size                = {{ sort_buffer_size }}
+sql-mode                        = {{ sql_modes }}
+
+{% if (is_mysql57|bool and true) or   (is_mysql56|bool and true) or (is_latest|bool and true) or (is_mysql80|bool and true) %}
+table_open_cache                = {{ table_cache }}
+{% else %}
+table_cache                     = {{ table_cache }}
+{% endif %}
+
+thread_cache_size               = {{ thread_cache_size }}
+thread_stack                    = {{ thread_stack }}
+tmp_table_size                  = {{ tmp_table_size }}
+transaction_isolation           = {{ transaction_isolation }}
+
+
+{% if (is_mysql57|bool and true)    or  (is_mysql56|bool and true) %}
+binlog_gtid_simple_recovery     = {{ binlog_gtid_simple_recovery }}
+{% endif %}
+
+#--------------------------
+# Query Cache Configuration
+#--------------------------
+
+{% if  ( (is_mysql56|bool and true) or (is_mysql55|bool and true) or (is_mysql51|bool and true) or (is_mariadb|bool and true)  or (is_mysql57|bool and true) ) %}
+query_cache_limit = {{ query_cache_limit }}
+query_cache_size  = {{ query_cache_size }}
+query_cache_type  = {{ query_cache_type }}
+{% endif %}
+
+
+
+#-----------------
+# Logging Settings
+#-----------------
+general_log_file    = {{ general_log_file }}
+
+{% if  log_long_format != None %}
+log_long_format
+{% endif %}
+
+log_output          = {{ log_output }}
+
+{% if  log_warnings == true  %}
+{% if ( (is_mysql56|bool and true) or (is_mysql55|bool and true) or (is_mysql51|bool and true) or (is_mariadb|bool and true) ) %}
+log_warnings
+{% endif %}
+{% if  (is_mysql57|bool and true) or (is_mysql80|bool and true) or (is_latest|bool and true)  %}
+log_error_verbosity = {{ log_error_verbosity }}
+{% endif %}
+{% endif %}
+
+long_query_time     = {{ long_query_time }}
+slow_query_log      = {{ slow_query_log }}
+slow_query_log_file = {{ slow_query_log_file }}
+
+#---------------------
+# Replication Settings
+#---------------------
+
+binlog-ignore-db=getlock
+binlog-ignore-db=tempdb
+replicate-ignore-db=getlock
+replicate-ignore-db=tempdb
+
+server-id = {{ server_id }}
+
+auto_increment_increment  = {{ auto_increment_increment }}
+auto_increment_offset     = {{ auto_increment_offset }}
+binlog_cache_size         = {{ binlog_cache_size }}
+
+{% if  log_long_format != None %}
+    {% for db_name in binlog_do_db %}
+binlog-do-db             = {{ db_name }}
+    {% endfor %}
+{% endif %}
+
+binlog_format             = {{ binlog_format }}
+{% if  (is_mysql80|bool and true) or (is_latest|bool and true)  %}
+binlog_expire_logs_seconds = {{ binlog_expire_logs_seconds }}
+{% else %}
+expire_logs_days          = {{ expire_logs_days }}
+{% endif %}
+log-bin                   = {{ log_bin }}
+log_bin_index             = {{ log_bin_index }}
+
+{% if log_slave_updates == true   %}
+log_slave_updates
+{% endif %}
+
+max_binlog_size           = {{ max_binlog_size }}
+relay-log                 = {{ relay_log }}
+relay_log_index           = {{ relay_log_index }}
+relay_log_info_file       = {{ relay_log_info_file }}
+skip_slave_start          = {{ skip_slave_start }}
+
+slave_compressed_protocol = {{ slave_compressed_protocol }}
+sync_binlog               = {{ sync_binlog }}
+
+
+{% if ignore_db != None %}
+    {% for db_name in ignore_db %}
+replicate-ignore-db       = {{ ignore_db }}
+    {% endfor %}
+{% endif %}
+
+{% if ignore_table != None %}
+    {% for table_name in  ignore_table  %}
+replicate-ignore-table    = {{ table_name }}
+    {% endfor %}
+{% endif %}
+
+report_host                     = {{ hostname }}
+slave-net-timeout               = {{ slave_net_timeout }}
+
+
+{% if ((is_mysql56|bool and true)    or (is_mysql57|bool and true) )  %}
+#slave-skip-errors
+slave_parallel_workers          = {{ slave_parallel_workers }}
+slave_allow_batching            = {{ slave_allow_batching }}
+slave_checkpoint_period         = {{ slave_checkpoint_period }}
+slave_checkpoint_group          = {{ slave_checkpoint_group }}
+slave_pending_jobs_size_max     = {{ slave_pending_jobs_size_max }}
+# for better crash recovery
+master_info_repository          = {{ master_info_repository }}
+relay_log_info_repository       = {{ relay_log_info_repository }}
+{% endif %}
+
+{% if (is_mysql51|bool and true)  %}
+# relay_log_recovery              = {{ relay_log_recovery }}
+{% else %}
+relay_log_recovery              = {{ relay_log_recovery }}
+{% endif %}
+
+#----------------
+# MyISAM settings
+#----------------
+myisam_max_sort_file_size = {{ myisam_max_sort_file_size }}
+{% if (myisam_recover != None)  %}
+{% if ( (is_mysql56|bool and true) or (is_mysql55|bool and true) or (is_mysql51|bool and true) or (is_mariadb|bool and true) )   %}
+myisam-recover
+{% endif %}
+{% endif %}
+
+myisam_repair_threads     = {{ myisam_repair_threads }}
+myisam_sort_buffer_size   = {{ myisam_sort_buffer_size }}
+
+#----------------
+# InnoDB settings
+#----------------
+default_storage_engine          = {{ default_storage_engine }}
+innodb_adaptive_flushing        = {{ innodb_adaptive_flushing }}
+
+{% if ( (is_mysql56|bool and true) or (is_mysql55|bool and true) or (is_mysql51|bool and true)  )  %}
+innodb_additional_mem_pool_size = {{ innodb_additional_mem_pool_size }}
+{% endif %}
+
+#######
+
+innodb_autoinc_lock_mode        = {{ innodb_autoinc_lock_mode }}
+innodb_buffer_pool_size         = {{ innodb_buffer_pool_size }}
+innodb_commit_concurrency       = {{ innodb_commit_concurrency }}
+innodb_data_home_dir            = {{ innodb_data_home_dir }}
+innodb_data_file_path           = {{ innodb_data_file_path }}
+
+{% if innodb_fast_shutdown != None %}
+innodb_fast_shutdown
+{% endif %}
+
+{% if  ( (is_mysql56|bool and true) or (is_mysql55|bool and true) or (is_mysql51|bool and true) or (is_mariadb|bool and true) ) %}
+innodb_file_format              = {{ innodb_file_format }}
+# innodb_file_io_threads          = {{ innodb_file_io_threads }}
+{% endif %}
+
+{% if  innodb_file_per_table != None %}
+innodb_file_per_table
+{% endif %}
+
+innodb_flush_log_at_trx_commit  = {{ innodb_flush_log_at_trx_commit }}
+innodb_flush_method             = {{ innodb_flush_method }}
+innodb_io_capacity              = {{ innodb_io_capacity }}
+
+{% if  (is_mysql57|bool and true)  or  (is_mysql56|bool and true)   %}
+innodb_io_capacity_max          = {{ innodb_io_capacity_max }}
+{% endif %}
+
+innodb_lock_wait_timeout        = {{ innodb_lock_wait_timeout }}
+innodb_log_buffer_size          = {{ innodb_log_buffer_size }}
+innodb_log_file_size            = {{ innodb_log_file_size }}
+innodb_log_files_in_group       = {{ innodb_log_files_in_group }}
+innodb_log_group_home_dir       = {{ innodb_log_group_home_dir }}
+innodb_max_dirty_pages_pct      = {{ innodb_max_dirty_pages_pct }}
+innodb_open_files               = {{ innodb_open_files }}
+innodb_read_io_threads          = {{ innodb_read_io_threads }}
+innodb_stats_on_metadata        = {{ innodb_stats_on_metadata }}
+{% if  ( (is_mysql56|bool and true) or (is_mysql55|bool and true) or (is_mysql51|bool and true) or (is_mariadb|bool and true)  or  (is_mysql57|bool and true) ) %}
+innodb_stats_sample_pages       = {{ innodb_stats_sample_pages }}
+{% endif %}
+innodb_status_file              = {{ innodb_status_file }}
+innodb_thread_concurrency       = {{ innodb_thread_concurrency }}
+innodb_write_io_threads         = {{ innodb_write_io_threads }}
+
+{% if  (is_mysql57|bool and true)  or  (is_mysql56|bool and true) or (is_mysql80|bool and true) or (is_latest|bool and true)  %}
+innodb_buffer_pool_instances    = {{ innodb_buffer_pool_instances }}
+innodb_purge_threads            = {{ innodb_purge_threads }}
+{% endif %}
+
+{% if  (is_mysql57|bool and true)  or  (is_mysql56|bool and true)  %}
+innodb_undo_tablespaces         = {{ innodb_undo_tablespaces }}
+innodb_undo_logs                = {{ innodb_undo_logs }}
+{% endif %}
+
+
+{% if  (is_mysql57|bool and true)  or  (is_mysql56|bool and true)  or (is_mysql80|bool and true) or (is_latest|bool and true)  %}
+innodb_undo_directory           = {{ innodb_undo_directory }}
+{% endif %}
+
+
+#---------------
+# SSL Settings #
+#---------------
+ssl_cipher = {{ ssl_cipher }}
+ssl-ca={{ ssl_ca }}
+ssl-cert={{ ssl_cert }}
+ssl-key={{ ssl_key }}
+
+
+#-------------------
+# Performance Schema
+#-------------------
+{% if ( (is_mysql57|bool and true)  or  (is_mysql56|bool and true)  or  (is_mysql55|bool and true)  or (is_mysql80|bool and true) or (is_latest|bool and true)  ) %}
+{% if ( enable_mysql_event_scheduler == true )  %}
+event_scheduler=ON
+{% endif %}
+performance_schema = {{ performance_schema }}
+{% endif %}
+
+
+{% if (is_percona|bool and true)  %}
+{% if ( enable_percona_mysql_auditing == true )  %}
+plugin-load="audit_log=audit_log.so;auth_pam=auth_pam.so;auth_pam_compat=auth_pam_compat.so;auth_socket=auth_socket.so"
+#audit_log_file={{ db_os_user_homedir }}/{{sid}}/logs/audit.log
+#audit_log_rotations=5
+#audit_log_rotate_on_size=256M
+#audit_log_format=NEW
+#audit_log_policy=QUERIES
+{% if  (is_mysql57|bool and true)  or (is_mysql80|bool and true) or (is_latest|bool and true) %}
+#audit_log_exclude_commands='error,insert,update,delete,set_option,change_db,prepare_sql,execute_sql,show_variables,show_status,call_procedure,show_collations,commit,execute,show_slave_status,show_master_status'
+{% endif %}
+{% if  (is_mysql56|bool and true)   %}
+#audit_log_include_commands='show_binlogs,show_binlog_events,show_client_statistics,show_create_db,show_create_event,show_create_func,show_create_proc,show_create_table,show_create_trigger,show_databases,show_engine_logs,show_engine_mutex,show_engine_status,show_errors,show_events,show_fields,show_function_code,show_function_status,show_grants,show_index_statistics,show_keys,show_open_tables,show_plugins,show_privileges,show_procedure_code,show_procedure_status,show_processlist,show_profile,show_profiles,show_relaylog_events,show_slave_hosts,show_storage_engines,show_tables,show_table_statistics,show_table_status,show_thread_statistics,show_triggers,show_user_statistics'
+{% endif %}
+{% endif %}
+{% endif %}
+
+
+{% if default_cnf_options != None %}
+#### Custom Variables Start #####
+# Make sure to GRANT EXECUTE ON PROCEDURE `dba_audit`.`simpleproc` TO every new user in DB.
+{% for var in default_cnf_options %}
+{{ var }}
+{% endfor %}
+#### Custom Variables Ends#####
+{% endif %}
+
+# wsrep_cluster_name="lab-mariadb-galera"
+
+
+### Galera Config starts ####
+{% if configure_galera != None %}
+[galera]
+
+# wsrep-new-cluster must ONLY be enabled for the initial bootstrap
+# of the first master node. It must remain commented for worker nodes.
+#wsrep-new-cluster
+
+wsrep_on=on
+wsrep_cluster_address="{{ wsrep_cluster_address }}"
+wsrep_node_name={{ hostname }}
+wsrep_provider=/usr/lib64/galera-4/libgalera_smm.so
+wsrep_node_address={{ host_ip }}
+wsrep_log_conflicts=on
+
+# Galera replication
+binlog_format=row
+default_storage_engine=InnoDB
+innodb_autoinc_lock_mode=2
+bind-address=0.0.0.0
+
+# Galera cluster
+wsrep_cluster_name="lab-mariadb-galera"
+
+# SST
+# mariabackup is required because the InnoDB redo logs are stored
+# outside the datadir in innodb_log_group_home_dir.
+wsrep_sst_method=mariabackup
+
+{% endif %}
+### Galera Config Ends ####
+
+[sst]
+# Disable SST TLS certificate verification.
+# Required for the lab certificate configuration.
+ssl-mode=DISABLED

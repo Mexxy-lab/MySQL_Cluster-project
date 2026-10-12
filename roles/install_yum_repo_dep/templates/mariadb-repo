@@ -1,0 +1,17 @@
+{% if (ansible_distribution_major_version >= "7") %}
+[mariadb]
+name = MariaDB
+baseurl = https://rpm.mariadb.org/{{mysql_variant_version}}/rhel/$releasever/$basearch
+gpgkey = https://rpm.mariadb.org/RPM-GPG-KEY-MariaDB
+enabled = 0
+gpgcheck=0
+{% else %}
+[mariadb]
+name = MariaDB
+baseurl = https://rpm.mariadb.org/{{mysql_variant_version}}/rhel/$releasever/$basearch
+gpgkey = https://rpm.mariadb.org/RPM-GPG-KEY-MariaDB
+enabled = 0
+gpgcheck=0
+{% endif %}
+
+

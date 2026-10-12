@@ -1,0 +1,18 @@
+[Unit]
+Description=MySQL {{ lc_sid }} Instance Service
+After=network-online.target local-fs.target
+Wants=network-online.target
+Requires=local-fs.target
+
+[Service]
+Type=forking
+PIDFile={{ pid_file }}
+ExecStart=/usr/local/sbin/{{ lc_sid }}-galera-start
+ExecStop=/etc/init.d/{{ lc_sid }} stop
+TimeoutStartSec=900
+TimeoutStopSec=900
+Restart=on-failure
+RestartSec=15
+
+[Install]
+WantedBy=multi-user.target

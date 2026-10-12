@@ -1,0 +1,9 @@
+{% if (is_mysql57|bool and true) %}
+set sql_log_bin=0;
+SET Password=PASSWORD('{{ sid }}cpsabd');
+FLUSH PRIVILEGES;
+{% else %}
+set sql_log_bin=0;
+SET Password=PASSWORD('{{ sid }}cpsabd');
+UPDATE mysql.user SET Password=PASSWORD('{{ sid }}cpsabd') WHERE User='root';
+{% endif %}

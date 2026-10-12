@@ -1,0 +1,14 @@
+---
+# This modifies repo file thats from the internet.
+deploy_default_repo: true
+# List of Nagios servers that will monitor this node - all separated by comma
+nagios_hosts:
+# For Legacy hosts - we want to collect user login credentials - take in username
+lagacy_mysql_admin_user:
+# For Legacy hosts - we want to collect user login credentials - take in user pass
+lagacy_mysql_admin_pass:
+# For Legacy hosts - we want to collect socket file paths for all instances of mysql installed
+lagacy_mysql_path_to_socket_files:
+# For Legacy hosts - we want to collect port numbers for all instances of mysql installed
+lagacy_mysql_port_numbers_used:
+

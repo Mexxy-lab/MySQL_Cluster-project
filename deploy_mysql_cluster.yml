@@ -1,0 +1,81 @@
+---
+- name: Install and configure Oracle MySQL 8.4 on cluster nodes
+  hosts: master:workers
+  become: true
+  gather_facts: true
+
+  vars_files:
+    - vars/mysql_cluster_vault.yml
+
+  roles:
+    - install_mysql_innodb_cluster
+
+- name: Create and verify the InnoDB Cluster
+  hosts: master
+  become: true
+  gather_facts: false
+
+  vars_files:
+    - vars/mysql_cluster_vault.yml
+
+  vars:
+    mysql_server_port: 3306
+    mysql_cluster_name: "labInnoDBCluster"
+    mysql_cluster_admin_user: "icadmin"
+    mysql_cluster_admin_host: "%"
+
+  tasks:
+    - name: Install the cluster creation script
+      ansible.builtin.template:
+        src: "{{ playbook_dir }}/roles/install_mysql_innodb_cluster/templates/create_cluster.js.j2"
+        dest: /root/create_cluster.js
+        owner: root
+        group: root
+        mode: "0600"
+      no_log: false
+
+    - name: Create or recover the cluster and verify topology
+      ansible.builtin.command:
+        argv:
+          - mysqlsh
+          - --js
+          - --file
+          - /root/create_cluster.js
+      register: mysql_cluster_creation
+      changed_when: true
+
+    - name: Install automatic cluster recovery systemd service
+      ansible.builtin.copy:
+        dest: /etc/systemd/system/mysql-innodb-cluster-recovery.service
+        owner: root
+        group: root
+        mode: "0644"
+        content: |
+          [Unit]
+          Description=Recover MySQL InnoDB Cluster after VM startup
+          Wants=network-online.target
+          After=network-online.target mysqld.service
+          Requires=mysqld.service
+
+          [Service]
+          Type=oneshot
+          User=root
+          ExecStart=/usr/bin/mysqlsh --no-wizard --js --file /root/create_cluster.js
+          RemainAfterExit=yes
+          Restart=on-failure
+          RestartSec=15
+          StartLimitIntervalSec=0
+          TimeoutStartSec=300
+
+          [Install]
+          WantedBy=multi-user.target
+
+    - name: Enable automatic cluster recovery at boot
+      ansible.builtin.systemd:
+        name: mysql-innodb-cluster-recovery.service
+        enabled: true
+        daemon_reload: true
+
+    - name: Display cluster creation and status output
+      ansible.builtin.debug:
+        var: mysql_cluster_creation.stdout

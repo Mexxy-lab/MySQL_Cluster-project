@@ -1,0 +1,1425 @@
+---
+# Configure MySQL Installation Playbook Role: install
+# This Role Does: Install MySQL Database Server.
+# the tasks in this role are grouped in tags: prechecks, ux_users, ux_settings, server, configure, backup
+# You can always issolate and run/execute one or a combination of these tags thus:
+# SHELL> ansible-playbook example.yml --tags "prechecks"
+# OR - combining multiple tags:
+# SHELL> ansible-playbook example.yml --tags "prechecks,ux_users"
+# OR - skip certain tags:
+# SHELL> ansible-playbook example.yml --skip-tags "prechecks,backup"
+
+# include encrypted variables file
+- include_vars: "vars/admin_db_users_info.yml"
+
+# Ensure that all notify runs even if tasks fail.
+- name: flushing handlers
+  meta: flush_handlers
+
+# Lets Start with the prechecks tags: prechecks ascertain the variables entered/specified are both valid and acceptable.
+# Any outliers in variable values will terminate play.
+# tags: prechecks
+- name: Terminate execution if the MySQL Variant isn't one of the following - MariaDB, Percona, Oracle-MySQL
+  fail: msg="INVALID MYSQL SERVER VARIANT - Specified Variant is {{ mysql_variant }} and valid options are - {{ accepted_mysql_variants }}."
+  when:  mysql_variant|lower  not in accepted_mysql_variants|lower
+  tags: prechecks
+
+- name: Terminate execution if the MySQL version is not provided
+  fail: msg="mysql version NOT Specified - valid versions are - {{ accepted_mysql_variant_version }}."
+  when: (mysql_variant_version is not defined ) or (  mysql_variant_version == None)
+  tags: prechecks
+
+- name: Terminate execution if the MySQL variant is not provided
+  fail: msg="mysql variant NOT Specified - valid variants are - {{ accepted_mysql_variants }}."
+  when: (mysql_variant is not defined ) or (  mysql_variant == None)
+  tags: prechecks
+
+- name: Terminate execution if the SID is not provided
+  fail: msg="SID NOT Specified."
+  when: (sid is not defined ) or (  sid == None)
+  tags: prechecks
+
+- name: Terminate execution if the MySQL Variant is Oracle-MySQL/Percona and mysql_variant_version not one of  8.0,5.7,5.6,5.5,latest.
+  fail: msg="INVALID mysql version - Specified Version is {{ mysql_variant_version }} and valid versions are - {{ accepted_mysql_variant_version }}."
+  when:  (mysql_variant|lower in 'percona' and  mysql_variant_version  not in accepted_mysql_variant_version) or (mysql_variant|lower in 'oracle-mysql' and  mysql_variant_version   not in accepted_mysql_variant_version)
+  tags: prechecks
+
+- name: Terminate execution if the MySQL Variant is MariaDB and mysql_variant_version not one of  10.0,10.1,10.2,10.3,latest.
+  fail: msg="INVALID MariaDB version - Specified Version is {{ mysql_variant_version }} and valid versions are - {{ accepted_mariadb_variant_version }}."
+  when:  (mysql_variant|lower in 'mariadb' and  mysql_variant_version  not in accepted_mariadb_variant_version)
+  tags: prechecks
+
+# We allow this to fail if the group does not exist.
+- name: Check if group - dba exists
+  action: shell grep  -P   '\b{{ dbadmin_group }}\b' /etc/group
+  register: group_exist1
+  ignore_errors: True
+  tags: prechecks
+
+- name: Check if group - {{ dbadmin_group }} exists
+  action: shell /usr/bin/getent group {{ dbadmin_group }}
+  register: group_exist2
+  when: ( group_exist1.rc  != 0  )
+  ignore_errors: True
+  tags: prechecks
+
+# Allow this to fail if the user does not exist.
+- name: Check if user - db_os_user exists
+  action: shell grep  -P   '\b{{ db_os_user }}\b' /etc/passwd
+  register: user_exist
+  ignore_errors: True
+  tags: prechecks
+
+- name: Terminate execution if db os user is not specified
+  fail: msg="Database User not specified - please specify a value for variable db_os_user."
+  when: ( db_os_user is not defined ) or  ( db_os_user == None )
+  tags: prechecks
+
+- name: Terminate execution if db_os_user_basedir is not specified
+  fail: msg="db_os_user_basedir not specified - please specify a value for variable db_os_user_basedir."
+  when: ( db_os_user_basedir is not defined ) or  ( db_os_user_basedir == None )
+  tags: prechecks
+
+- name: set db_os_user_homedir
+  set_fact: db_os_user_homedir={{ db_os_user_basedir }}/v1/admin
+  when: ( db_os_user_homedir is not defined ) or  ( db_os_user_homedir == None )
+  tags:
+    - ux_users
+    - systemd_service
+
+- name: set db_os_user_homedir
+  set_fact: db_os_user_homedir={{ db_os_user_homedir }}/v1/admin
+  when: ('/v1/admin' not in db_os_user_homedir)
+  tags:
+    - ux_users
+    - systemd_service
+
+- name: create db_os_user_homedir directory
+  file: path={{ db_os_user_homedir }}  state=directory  mode=0755
+  tags: ux_users
+
+# Add group 'dbadmin_group'
+- name: Add the group - dba without a specific gid
+  action: group name={{ dbadmin_group }}  state=present
+  when:
+    - group_exist2.rc is defined
+    - group_exist2.rc != 0
+
+# Add user 'db_os_user'
+- name: Add the user - db_os_user without a specific uid - trial run 1
+  action: user name={{ db_os_user }} comment="DBA OS USER"    home={{ db_os_user_homedir }} shell="/bin/bash"  group={{ dbadmin_group }}
+  when: ( user_exist.rc  != 0  )
+  tags: ux_users
+
+# Set the db os user home dir to {{ db_os_user_homedir }}/v1/admin
+- name: create db_os_user_homedir directory
+  file: path={{ db_os_user_homedir }}  state=directory owner={{ db_os_user }} group={{ dbadmin_group }} mode=0755
+  tags: ux_users
+
+- name: create db_os_user ssh directory
+  file: path={{ db_os_user_homedir }}/.ssh  state=directory owner={{ db_os_user }} group={{ dbadmin_group }} mode=0700 recurse=yes
+  tags: ux_users
+
+- name: create db_os_user .tmp directory
+  file: path={{ db_os_user_homedir }}/.tmp  state=directory owner={{ db_os_user }} group={{ dbadmin_group }} mode=0755
+  tags: ux_users
+
+- name: create db_os_user base directory
+  file: path={{ db_os_user_basedir }}  state=directory owner={{ db_os_user }} group={{ dbadmin_group }} mode=0755
+  when: ( db_os_user_basedir is defined ) or  ( db_os_user_basedir != None )
+  tags: ux_users
+
+# tags: configure_mysql
+- name: set sid to uppercase.
+  set_fact: sid={{ sid|upper }}
+  when: ( sid is defined ) or  ( sid != None )
+  tags:
+    - configure_mysql
+    - systemd_service
+
+- name: set datadir.
+  set_fact: datadir={{db_os_user_basedir }}/v3/table/{{ sid }}
+  when: ( sid != None )
+  tags:
+    - ux_users
+    - systemd_service
+
+- name: set datadir.
+  set_fact: datadir={{db_os_user_basedir }}/v3/table/mysql
+  when:
+    - ( sid != None )
+    - ( deploy_using_ck_dir_structure != 'no' )
+  tags: ux_users
+
+- name: set db_os_user_base_data_dir if unset
+  set_fact: db_os_user_base_data_dir={{ datadir }}
+  when: ( db_os_user_base_data_dir is not defined ) or  ( db_os_user_base_data_dir == None )
+  tags: ux_users
+
+- name: create db_os_user data directory
+  file: path={{ db_os_user_base_data_dir }}  state=directory owner={{ db_os_user }} group={{ dbadmin_group }} mode=0755
+  when: ( db_os_user_base_data_dir is defined ) or  ( db_os_user_base_data_dir != None )
+  tags: ux_users
+
+# Make sure sub-file & sub-directory permissions for key directories are set to user db_os_user
+- name: Ensure File ownership in key directories are set to user db_os_user
+  shell: "chown -R {{ db_os_user }}:{{ dbadmin_group }}  {{ item }}"
+  with_items:
+    - "{{ db_os_user_base_data_dir }}"
+    - "{{ db_os_user_basedir }}"
+    - "{{ db_os_user_homedir }}"
+  tags: ux_users
+
+## enable crontab for mysql instance owner
+- name: Check that the /etc/cron.allow exists
+  stat: path=/etc/cron.allow
+  register: cron_allow_stat_result
+  tags: ux_users
+
+- name: Check that the /etc/cron.deny exists
+  stat: path=/etc/cron.deny
+  register: cron_deny_stat_result
+  tags: ux_users
+
+- name: Check that db_os_user is not denied access to cron services
+  lineinfile:
+    dest: /etc/cron.deny
+    regexp: '^{{ db_os_user }}'
+    state: absent
+  when: cron_deny_stat_result.stat.exists  == True
+  tags: ux_users
+
+- name: Check that db_os_user is allowed access to cron services
+  lineinfile:
+    dest: /etc/cron.allow
+    regexp: '^{{ db_os_user }}'
+    state: present
+    line: '{{ db_os_user }}'
+  when: cron_allow_stat_result.stat.exists  == True
+  tags: ux_users
+
+# tags: ux_settings
+
+# Deploy the System ulimits File
+- name: deploy MySQL user Open-Files Limits File
+  template: src=limits.conf
+    dest=/etc/security/limits.d/mysql.conf
+    owner=root group=root mode=0644
+  tags: ux_settings
+
+- name: set sid to lowercase.
+  set_fact: lc_sid={{ sid|lower }}
+  when: ( sid is defined ) or  ( sid != None )
+  tags:
+    - configure_mysql
+    - systemd_service
+
+
+# Install Perl modules
+# - name: install perl-MIME-Lite package centos 6.x and lower
+#   yum: name=perl-MIME-Lite state=installed
+#   tags: ux_settings
+
+- name: Set UTC timezone
+  file: src=/usr/share/zoneinfo/{{ timezone }}  dest=/etc/localtime state=link force=yes
+  notify: restart crond
+  tags: ux_settings
+
+# tags: install_mysql
+- name: set mysql_variant to lowercase.
+  set_fact: mysql_variant_lc={{ mysql_variant|lower }}
+  tags:
+    - install_mysql
+    - systemd_service
+
+- name: set mysql_variant_version to lowercase.
+  set_fact: mysql_variant_version_lc={{ mysql_variant_version|lower }}
+  tags:
+    - install_mysql
+    - systemd_service
+
+- name: set populate_ckadmin_db to lowercase.
+  set_fact: populate_ckadmin_db_lc="{{ populate_ckadmin_db | lower }}"
+  tags: install_mysql
+
+- name: set deploy_admin_db to lowercase.
+  set_fact: deploy_admin_db_lc="{{ deploy_admin_db | lower }}"
+  tags: install_mysql
+
+- debug:
+    msg: System deploy_admin_db_lc has value {{ deploy_admin_db_lc }}
+
+- debug:
+    msg: System populate_ckadmin_db_lc has value {{ populate_ckadmin_db_lc }}
+
+- name: set multi_vars booleans.
+  set_fact:
+    is_mysql80: "{{mysql_variant_version_lc == '8.0'}}"
+    is_mysql57: "{{mysql_variant_version_lc == '5.7'}}"
+    is_mysql56: "{{mysql_variant_version_lc == '5.6'}}"
+    is_mysql55: "{{mysql_variant_version_lc == '5.5'}}"
+    is_mysql51: "{{mysql_variant_version_lc == '5.1'}}"
+    is_latest:  "{{mysql_variant_version_lc == 'latest'}}"
+    is_mariadb: "{{mysql_variant_lc == 'mariadb'}}"
+    is_mariadb10: "{{'10' in mysql_variant_version_lc }}"
+    is_percona: "{{mysql_variant_lc == 'percona'}}"
+    is_oracle_mysql: "{{mysql_variant_lc == 'oracle-mysql'}}"
+    is_opsdb: "{{ deploy_admin_db_lc == True }}"
+    to_populate_ckadmin: "{{ populate_ckadmin_db_lc == True }}"
+  tags:
+    - install_mysql
+
+- name: set multi_vars booleans 1.
+  set_fact:
+    mysql_variant_version: 8.0
+  when:
+    - is_percona|bool and true
+    - is_latest|bool and true
+  tags:
+    - install_mysql
+
+# Enable requisite repo for Percona MySQL Server Starts #
+- name: enable percona repository I
+  ini_file: dest=/etc/yum.repos.d/percona.repo
+            section=ps-80-release-$basearch
+            option=enabled
+            value=1
+  when:
+    - (deploy_default_repo)
+    - (is_mysql80|bool and true) or (is_latest|bool and true)
+  tags: install_mysql
+
+# Enable requisite repo for Percona MySQL Server Ends #
+
+# Enable repo for oracle community mysql server starts: #
+- name: enable oracle community mysql repository
+  ini_file: dest=/etc/yum.repos.d/oracle_mysql.repo
+            section=mysql-community
+            option=enabled
+            value=1
+  when:
+    - (deploy_default_repo) # is_true_deploy_default_repo|bool and true
+    - is_oracle_mysql|bool and true
+  tags: install_mysql
+# Enable repo for oracle community mysql server Ends: #
+
+- name: Install MySQL Packages for RHEL - Percona MySQL Server 8.0/latest
+  yum: name={{ item }} state=present
+  with_items:
+    - percona-server-client
+    - percona-server-server
+    - percona-server-shared
+    - percona-server-devel
+  when:
+    - is_percona|bool and true
+    - (is_mysql80|bool and true) or (is_latest|bool and true)
+  tags: install_mysql
+
+- name: Install MySQL Packages for RHEL - Percona MySQL Server 5.7
+  yum: name={{ item }} state=present
+  with_items:
+    - Percona-Server-client-57
+    - Percona-Server-server-57
+    - Percona-Server-shared-57
+    - Percona-Server-devel-57
+  when:
+    - is_percona|bool and true
+    - (is_mysql57|bool and true)
+  tags: install_mysql
+
+- name: Install MySQL Packages for RHEL - Percona MySQL Server 5.6
+  yum: name={{ item }} state=present
+  with_items:
+    - Percona-Server-client-56
+    - Percona-Server-server-56
+    - Percona-Server-shared-56
+    - Percona-Server-devel-56
+  when:
+    - is_percona|bool and true
+    - is_mysql56|bool and true
+  tags: install_mysql
+
+- name: Install MySQL Packages for RHEL - Percona MySQL Server 5.5
+  yum: name={{ item }} state=present
+  with_items:
+    - Percona-Server-client-55
+    - Percona-Server-server-55
+    - Percona-Server-shared-55
+    - Percona-Server-devel-55
+  when:
+    - is_percona|bool and true
+    - is_mysql55|bool and true
+  tags: install_mysql
+
+- name: create staging directory to hold percona 5.1 rpm binaries
+  file: path=/tmp/rpm_staging_dir  state=directory owner=root group=root mode=0755
+  when:
+    - is_percona|bool and true
+    - is_mysql51|bool and true
+  tags: configure_mysql
+
+- name: Download Percona 5.1 rpm files
+  shell: "cd /tmp/rpm_staging_dir &&  wget -r -l 1 -nd -A rpm -R '*devel*,*debuginfo*'  http://www.percona.com/redir/downloads/Percona-Server-5.1/Percona-Server-5.1.58-12.9/RPM/rhel6/x86_64/"
+  when:
+    - is_percona|bool and true
+    - is_mysql51|bool and true
+  tags: install_mysql
+  ignore_errors: True
+
+- name: Install MySQL Packages for RHEL - Percona MySQL Server 5.1
+  yum: name={{ item }} state=present
+  with_items:
+    - /tmp/rpm_staging_dir/Percona-Server-shared-51-5.1.58-rel12.9.271.rhel6.x86_64.rpm
+    - /tmp/rpm_staging_dir/Percona-Server-client-51-5.1.58-rel12.9.271.rhel6.x86_64.rpm
+    - /tmp/rpm_staging_dir/Percona-Server-server-51-5.1.58-rel12.9.271.rhel6.x86_64.rpm
+  when:
+    - is_percona|bool and true
+    - is_mysql51|bool and true
+  tags: install_mysql
+
+- name: set multi_vars booleans.
+  set_fact:
+    mysql_variant_version: 10.1
+  when:
+    - is_mariadb|bool and true
+    - is_latest|bool and true
+  tags: install_mysql
+
+- name: Prepare for MariaDB Install on RHEL 7.x - MariaDB 10.x or latest
+  yum: name={{ item }} state=absent
+  with_items:
+    - mariadb-libs
+  when:
+    - is_mariadb|bool and true  or is_oracle_mysql|bool and true
+    - (ansible_distribution_major_version >= "7")
+  tags: install_mysql
+
+- name: Prepare for MariaDB Install on RHEL 6.x - MariaDB 10.x or latest - 1
+  yum: name={{ item }} state=absent
+  with_items:
+    - mysql-libs-5.1
+  when:
+    - is_mariadb|bool and true or is_oracle_mysql|bool and true
+  tags: install_mysql
+
+- name: enable Default mariadb repository
+  ini_file: dest=/etc/yum.repos.d/mariadb.repo
+            section=mariadb
+            option=enabled
+            value=1
+  when:
+    - (deploy_default_repo)
+    - is_mariadb|bool and true
+  tags: install_mysql
+
+- name: Install MySQL Packages for RHEL - oracle community mysql server
+  yum: name={{ item }} state=present
+  with_items:
+    - mysql-community-server
+  when:
+    - is_oracle_mysql|bool and true
+
+- name: Install MariaDB Server for RHEL - MariaDB Server 10.x/latest
+  yum: name={{ item }} state=present
+  with_items:
+    - MariaDB-server
+    - MariaDB-client
+    - MariaDB-devel
+    - MariaDB-backup
+    - MariaDB-shared
+  when:
+    - is_mariadb|bool and true
+    - (is_mariadb10|bool and true) or (is_latest|bool and true)
+  tags: install_mysql
+
+- name: Prepare for MariaDB Install on RHEL 6.x - MariaDB 10.x or latest - 2
+  yum: name={{ item }} state=present
+  with_items:
+    - postfix
+    - cronie
+    - cronie-anacron
+    - crontabs
+  when:
+    - is_mariadb|bool and true or is_oracle_mysql|bool and true
+    - ( ansible_distribution_major_version < "7")
+  tags: install_mysql
+
+- name: Prepare for MariaDB Install on RHEL 7.x - MariaDB 10.x or latest
+  yum: name={{ item }} state=present
+  with_items:
+    - postfix
+  when:
+    - is_mariadb|bool and true or is_oracle_mysql|bool and true
+    - (ansible_distribution_major_version >= "7")
+  tags: install_mysql
+
+# -- set up the epel repository: Starts
+- name: epel-release install
+  yum: name=epel-release
+       enablerepo=ansible-bootstrap-epel
+       state=present
+  when:
+    - (deploy_default_repo) # is_true_deploy_default_repo|bool and true
+  tags: install_mysql
+
+- name: epel repository enable
+  ini_file: dest=/etc/yum.repos.d/epel.repo
+            section=epel
+            option=enabled
+            value=1
+  when:
+    - (deploy_default_repo)
+  tags: install_mysql
+# -- set up the epel repository: Ends #
+
+- name: enable percona tools repository
+  ini_file: dest=/etc/yum.repos.d/percona.repo
+            section=tools-release-x86_64
+            option=enabled
+            value=1
+  tags: install_mysql
+
+# Install QPress, Percona xtraBackup and Toolkit
+- name: Install QPress, Percona xtraBackup and Toolkit
+  yum:
+    state: present
+    name:
+      - rsync
+      - perl-IO-Socket-SSL
+      - perl-DBD-MySQL
+      - perl-Time-HiRes
+      - percona-toolkit
+      - qpress
+      - pv
+      - screen
+      - curl
+  tags: install_mysql
+
+# Install  Percona xtraBackup for MySQL 8.0
+- name: Install Percona xtraBackup MySQL 8.0
+  yum:
+    state: present
+    name:
+      - percona-xtrabackup-80
+  when: (is_mysql80|bool and true) or (is_latest|bool and true)
+
+# Install  Percona xtraBackup for MySQL 5.7
+- name: Install Percona xtraBackup MySQL 5.7
+  yum:
+    state: present
+    name:
+      - percona-xtrabackup-24
+  when: (is_mysql57|bool and true)
+
+# Install  Percona xtraBackup for Versions of MySQl less than 5.7
+- name: Install Percona xtraBackup MySQL and MariaDB
+  yum:
+    state: present
+    name:
+      - percona-xtrabackup.x86_64
+  when: (is_mysql56 and true) or ( is_mysql55 and true) or (is_mysql51 and true)
+
+- name: disable percona tools repository
+  ini_file: dest=/etc/yum.repos.d/percona.repo
+            section=tools-release-x86_64
+            option=enabled
+            value=0
+  tags: install_mysql
+
+- name: Disable default mysql(d) service
+  service: name=mysql state=stopped enabled=no
+  ignore_errors: True
+  tags: install_mysql
+
+- name: Disable default mysql(d) service
+  service: name=mysqld state=stopped enabled=no
+  ignore_errors: True
+  tags: install_mysql
+
+- name: set hostname.
+  set_fact: hostname={{ansible_hostname}}
+  when: ( hostname is not defined ) or  ( hostname == None )
+  tags: configure_mysql
+
+- name: set overwrite.
+  set_fact: overwrite={{mysql_db_overwrite}}
+  when: ( mysql_db_overwrite is  defined ) or  ( mysql_db_overwrite != None )
+  tags: configure_mysql
+
+- name: set port.
+  set_fact: port={{db_port}}
+  when: ( db_port is  defined ) or  ( db_port != None )
+  tags: configure_mysql
+
+- name: Get a tentative server_id for DB Server
+  shell: "/bin/hostname | /usr/bin/cksum | /bin/cut -d ' ' -f1"
+  register: server_id_out
+  when: ( server_id is not defined ) or  ( server_id == None )
+  tags: configure_mysql
+
+- name: set server_id.
+  set_fact: server_id={{ server_id_out.stdout }}
+  when: ( server_id is not defined ) or  ( server_id == None )
+  tags: configure_mysql
+
+- name: set innodb_buffer_pool_tmp 1.
+  set_fact: innodb_buffer_pool_tmp={{(innodb_buffer_pool_size_percent_host_mem*ansible_memtotal_mb/1000)|int}}GB
+  when: ( innodb_buffer_pool_size_percent_host_mem is defined ) or  ( innodb_buffer_pool_size_percent_host_mem != None )
+  tags: configure_mysql
+
+- name: set innodb_buffer_pool_tmp 2.
+  set_fact: innodb_buffer_pool_tmp={{(ansible_memtotal_mb/2)|int}}MB
+  when: ( innodb_buffer_pool_tmp == '0GB' ) or   ( innodb_buffer_pool_tmp == None ) or  ( innodb_buffer_pool_tmp is not defined )
+  tags: configure_mysql
+
+- name: set innodb_buffer_pool_tmp 3.
+  set_fact: innodb_buffer_pool_size={{ innodb_buffer_pool_tmp }}
+  when: ( innodb_buffer_pool_size_in_Bytes is not defined ) or  ( innodb_buffer_pool_size_in_Bytes == None )
+  tags: configure_mysql
+
+- name: set innodb_buffer_pool_tmp 4.
+  set_fact: innodb_buffer_pool_size={{ innodb_buffer_pool_size_in_Bytes }}
+  when: ( innodb_buffer_pool_size_in_Bytes is defined and  innodb_buffer_pool_size_in_Bytes != None )
+  tags: configure_mysql
+
+# Setting MyISAM Key Buffer size
+- name: set key_buffer_size_tmp 1.
+  set_fact: key_buffer_size_tmp={{(key_buffer_size_percent_host_mem*ansible_memtotal_mb/1000)|int}}GB
+  when: ( key_buffer_size_percent_host_mem is defined ) or  ( key_buffer_size_percent_host_mem != None )
+  tags: configure_mysql
+
+- name: set key_buffer_size_tmp 2.
+  set_fact: key_buffer_size_tmp={{(ansible_memtotal_mb/4)|int}}MB
+  when: ( key_buffer_size_tmp == '0GB' ) or   ( key_buffer_size_tmp == None ) or  ( key_buffer_size_tmp is not defined )
+  tags: configure_mysql
+
+- name: set key_buffer_size 1.
+  set_fact: key_buffer_size={{ key_buffer_size_tmp }}
+  when: ( key_buffer_size_in_Bytes is not defined ) or  ( key_buffer_size_in_Bytes == None )
+  tags: configure_mysql
+
+- name: set key_buffer_size 2.
+  set_fact: key_buffer_size={{ key_buffer_size_in_Bytes }}
+  when: ( key_buffer_size_in_Bytes is defined and  key_buffer_size_in_Bytes != None )
+  tags: configure_mysql
+
+- name: deploy mysql instance owner profile File
+  template: src=db.owner.profile.erb
+    dest={{ db_os_user_homedir }}/.profile
+    owner={{ db_os_user }} group={{ dbadmin_group }} mode=0644
+  tags: configure_mysql
+
+- name: Create database owner env directory
+  file: path={{ db_os_user_homedir }}/env  state=directory owner={{ db_os_user }} group={{ dbadmin_group }} mode=0755
+  tags: configure_mysql
+
+# Set out pending variables values
+- name: set var log_error
+  set_fact: log_error={{db_os_user_homedir}}/{{ sid }}/logs/{{sid}}_err.log
+- name: set var pid_file
+  set_fact: pid_file={{db_os_user_homedir}}/{{ sid }}/cfg/{{sid}}.pid
+  tags: systemd_service
+- name: set var socket
+  set_fact: socket={{db_os_user_homedir}}/{{ sid }}/cfg/{{sid}}mysql.sock
+  tags: systemd_service
+- name: set var tmpdir
+  set_fact: tmpdir={{db_os_user_homedir}}/{{ sid }}/tmp
+- name: set var general_log_file
+  set_fact: general_log_file={{db_os_user_homedir}}/{{ sid }}/logs/general.log
+- name: set var slow_query_log_file
+  set_fact: slow_query_log_file={{db_os_user_homedir}}/{{ sid }}/logs/mysql_slow.log
+- name: set var username
+  set_fact: username={{db_os_user}}
+- name: set var ssl_ca
+  set_fact: ssl_ca={{db_os_user_basedir}}/v1/admin/{{sid}}/certs/ca-cert.pem
+- name: set var ssl_cert
+  set_fact: ssl_cert={{db_os_user_basedir}}/v1/admin/{{sid}}/certs/server-cert.pem
+- name: set var ssl_key
+  set_fact: ssl_key={{db_os_user_basedir}}/v1/admin/{{sid}}/certs/server-key.pem
+- name: set var log_bin
+  set_fact: log_bin={{db_os_user_basedir}}/v2/archlog/{{sid}}/{{hostname}}_bin
+- name: set var log_bin_index
+  set_fact: log_bin_index={{db_os_user_basedir}}/v2/archlog/{{sid}}/{{hostname}}_bin.index
+- name: set var relay_log
+  set_fact: relay_log={{db_os_user_basedir}}/v2/archlog/{{sid}}/{{hostname}}_relay_bin
+- name: set var relay_log_index
+  set_fact: relay_log_index={{db_os_user_basedir}}/v2/archlog/{{sid}}/{{hostname}}_relay_bin.index
+- name: set var relay_log_info_file
+  set_fact: relay_log_info_file={{db_os_user_basedir}}/v2/archlog/{{sid}}/{{hostname}}_relay_log.info
+
+- name: set var log_bin, var log_bin_index,  var relay_log, var relay_log_index, var relay_log_info_file
+  set_fact:
+    log_bin: "{{db_os_user_basedir }}/v3/table/logs/binlogs/{{hostname}}_bin"                           # {{db_os_user_basedir}}/v2/archlog/{{sid}}/{{hostname}}_bin
+    log_bin_index: "{{db_os_user_basedir }}/v3/table/logs/binlogs/{{hostname}}_bin.index"               # {{db_os_user_basedir}}/v2/archlog/{{sid}}/{{hostname}}_bin.index
+    relay_log: "{{db_os_user_basedir }}/v3/table/logs/relaylogs/{{hostname}}_relay_bin"                 # {{db_os_user_basedir}}/v2/archlog/{{sid}}/{{hostname}}_relay_bin
+    relay_log_index: "{{db_os_user_basedir }}/v3/table/logs/relaylogs/{{hostname}}_relay_bin.index"     # {{db_os_user_basedir}}/v2/archlog/{{sid}}/{{hostname}}_relay_bin.index
+    relay_log_info_file: "{{db_os_user_basedir }}/v3/table/logs/relaylogs/{{hostname}}_relay_log.info"  # {{db_os_user_basedir}}/v2/archlog/{{sid}}/{{hostname}}_relay_log.info
+  when:
+    - ( deploy_using_ck_dir_structure != 'no' )
+
+- name: set var tmpdir, var general_log_file, var slow_query_log_file
+  set_fact:
+    tmpdir: "{{db_os_user_basedir }}/v3/table/tmp"
+    general_log_file: "{{db_os_user_basedir }}/v3/table/logs/generallogs/general.log"
+    slow_query_log_file: "{{db_os_user_basedir }}/v3/table/logs/slowlogs/mysql_slow.log"
+    log_error: "{{db_os_user_basedir }}/v3/table/logs//{{sid}}_err.log"
+  when:
+    - ( deploy_using_ck_dir_structure != 'no' )
+
+
+- name: set var innodb_data_home_dir
+  set_fact: innodb_data_home_dir={{db_os_user_basedir}}/v3/table/{{sid}}
+- name: set var innodb_log_group_home_dir
+  set_fact: innodb_log_group_home_dir={{db_os_user_basedir}}/v2/archlog/{{sid}}/INNODB
+- name: set var innodb_undo_log_dir
+  set_fact: innodb_undo_log_dir ={{db_os_user_basedir}}/v2/archlog/{{sid}}/INNODB/UNDO
+
+
+
+- name: set var innodb_data_home_dir, var innodb_log_group_home_dir, var innodb_undo_log_dir
+  set_fact:
+    innodb_data_home_dir: "{{db_os_user_basedir }}/v3/table/mysql"
+    innodb_log_group_home_dir: "{{db_os_user_basedir }}/v3/table/mysql"
+    innodb_undo_log_dir: "{{db_os_user_basedir }}/v3/table/mysql"
+  when:
+    - ( deploy_using_ck_dir_structure != 'no' )
+
+- name: deploy mysql instance owner env script
+  template: src=db.owner.env.erb
+    dest={{ db_os_user_homedir }}/env/{{ sid }}.env
+    owner={{ db_os_user }} group={{ dbadmin_group }} mode=0644
+  tags: configure_mysql
+
+
+## Set unix io scheduler
+# Deploy unix io scheduler script to execute
+- name: deploy unix io scheduler script to execute
+  template: src=unix_io_scheduler_check_and_misc.sh
+    dest={{ db_os_user_homedir }}/.tmp/unix_io_scheduler_check_and_misc.sh
+    owner=root group=root mode=0755
+  tags: ux_settings
+
+# Set swappiness & cfq io scheduler
+- name: Execute unix io scheduler script
+  shell: bash  {{ db_os_user_homedir }}/.tmp/unix_io_scheduler_check_and_misc.sh modify_sys
+  tags: ux_settings
+
+
+# run scripts to create requisite MySQL Directories
+- name: Execute script to create requisite MySQL Directories
+  shell: bash {{ db_os_user_homedir }}/.tmp/unix_io_scheduler_check_and_misc.sh    set_up_mysql_dirs_misc
+  become_user: "{{ db_os_user }}"
+  tags: configure_mysql
+
+- name: create mysql startup script
+  template: src=db.startup.erb
+    dest={{ db_os_user_homedir }}/{{ sid }}/bin/startup.sh
+    owner={{ db_os_user }} group={{ dbadmin_group }} mode=0700
+  tags: configure_mysql
+
+- name: create mysql shutdown script
+  template: src=db.shutdown.erb
+    dest={{ db_os_user_homedir }}/{{ sid }}/bin/shutdown.sh
+    owner={{ db_os_user }} group={{ dbadmin_group }} mode=0700
+  tags: configure_mysql
+
+- name: Deploy SSL files - file1.
+  copy: src=server-key.pem
+    dest={{ db_os_user_homedir }}/{{ sid }}/certs/server-key.pem
+    owner={{ db_os_user }} group={{ dbadmin_group }} mode=0640
+    force=yes
+  tags: configure_mysql
+
+- name: Deploy SSL files - file2.
+  copy: src=server-cert.pem
+    dest={{ db_os_user_homedir }}/{{ sid }}/certs/server-cert.pem
+    owner={{ db_os_user }} group={{ dbadmin_group }} mode=0640
+    force=yes
+  tags: configure_mysql
+
+- name: Deploy SSL files - file2.
+  copy: src=ca-cert.pem
+    dest={{ db_os_user_homedir }}/{{ sid }}/certs/ca-cert.pem
+    owner={{ db_os_user }} group={{ dbadmin_group }} mode=0640
+    force=yes
+  tags: configure_mysql
+
+
+
+# - name: Deploy mysql configuration(cnf) file.
+#   template: src=db.std.mysql.cnf.erb
+#     dest={{ db_os_user_homedir }}/{{ sid }}/cfg/my_{{sid}}.cnf
+#     owner={{ db_os_user }} group={{ dbadmin_group }} mode=0644
+#     force=yes
+#   notify: restart mysql
+#   tags: configure_mysql
+
+# - name: Enable Galera bootstrapping
+#   lineinfile: dest={{ db_os_user_homedir }}/{{ sid }}/cfg/my_{{sid}}.cnf
+#               regexp="#wsrep-new-cluster"
+#               line="wsrep-new-cluster"
+#               state=present
+#   when: galera_bootstrap_stat_result.stat.exists  == False
+#   run_once: true
+#   delegate_to:  "{{ groups['master'][0] }}"
+#   notify: restart mysql
+#   tags: configure_mysql
+
+- name: Deploy mysql configuration(cnf) file.
+  template:
+    src: db.std.mysql.cnf.erb
+    dest: "{{ db_os_user_homedir }}/{{ sid }}/cfg/my_{{sid}}.cnf"
+    owner: "{{ db_os_user }}"
+    group: "{{ dbadmin_group }}"
+    mode: "0644"
+    force: yes
+  tags: configure_mysql
+
+# Galera SST
+# IMPORTANT:
+# rsync is not safe for this installation because InnoDB redo logs are stored
+# outside the datadir:
+#   datadir = /db/p/offbzii/v3/table/{{ sid }}
+#   innodb_log_group_home_dir = /db/p/offbzii/v2/archlog/{{ sid }}/INNODB
+#
+# MariaDB 10.6 wsrep_sst_rsync has a known problem with this layout.
+# mariabackup correctly handles the external InnoDB redo directory.
+- name: Configure Galera SST method to mariabackup
+  lineinfile:
+    path: "{{ db_os_user_homedir }}/{{ sid }}/cfg/my_{{sid}}.cnf"
+    regexp: '^\s*wsrep_sst_method\s*='
+    line: 'wsrep_sst_method=mariabackup'
+    state: present
+  notify: restart mysql
+  tags: configure_mysql
+
+
+# start_mysql_5_7_or_latest
+- name: Install MySQL System Database and start mysql instance - 5.7 or latest
+  shell: bash  {{ db_os_user_homedir }}/.tmp/unix_io_scheduler_check_and_misc.sh start_mysql_5_7_or_latest
+  when:
+    - (is_mysql57|bool and true) or (is_mysql80|bool and true) or ((is_percona|bool and true ) and (is_latest|bool and true))
+  tags: configure_mysql
+
+# start_mysql_5_6_or_earlier
+- name: Initialize MySQL System Database - 5.6 or earlier
+  shell: bash  {{ db_os_user_homedir }}/.tmp/unix_io_scheduler_check_and_misc.sh start_mysql_5_6_or_earlier
+  when:
+    - (is_mariadb|bool and true) or (is_mariadb10|bool and true) or (is_mysql56|bool and true)  or (is_mysql55|bool and true) or (is_mysql51|bool and true)
+  tags: configure_mysql
+
+- name: create /etc/init.d/ directory
+  file: path=/etc/init.d/  state=directory  mode=0755
+  tags: ux_users
+
+- name: set systemd service template variables
+  set_fact:
+    is_mysql57: "{{ mysql_variant_version_lc == '5.7' }}"
+  tags:
+    - systemd_service
+
+# create and enable mysql sid service - drop service file
+- name: create and enable mysql sid service - drop service file
+  template: src=mysql.server.erb
+    dest=/etc/init.d/{{ lc_sid }}
+    owner=root group=root mode=0744
+  tags: systemd_service
+
+- name: create Galera startup wrapper
+  template:
+    src: galera_start.sh.erb
+    dest: /usr/local/sbin/{{ lc_sid }}-galera-start
+    owner: root
+    group: root
+    mode: '0755'
+    validate: '/bin/bash -n %s'
+  when:
+    - configure_galera is defined
+    - configure_galera != None
+  tags: systemd_service
+
+- name: create and enable mysql sid service - drop systemd file
+  template: src=link_mysql.server.erb
+    dest=/etc/systemd/system/{{ lc_sid }}.service
+    owner=root group=root mode=0644
+  when: ( ansible_distribution_major_version >= "7" )
+  tags: systemd_service
+
+- name: Reload systemd after installing mysql sid service
+  systemd:
+    daemon_reload: yes
+  tags: systemd_service
+
+- name: Enable my service
+  service:
+    name: "{{lc_sid}}.service"
+    enabled: True
+    use: service
+  tags: systemd_service
+
+# - name: enable mysql sid service - 1
+#   systemd: name={{ lc_sid}} state=started enabled=yes
+#   when: (ansible_distribution == "RHEL" and ansible_distribution_major_version >= "7" )
+#   tags: configure_mysql
+
+# Start the master first when this is an explicit Galera recovery/bootstrap.
+# The workers play runs only after the master play has completed.
+- name: Start MySQL SID service
+  ansible.builtin.systemd:
+    name: "{{ lc_sid }}.service"
+    state: started
+  when:
+    - ansible_distribution_major_version >= "7"
+  tags: configure_mysql
+
+- name: Wait for Galera master to become Primary
+  shell: >
+    mysql -uroot
+    -S {{ socket }}
+    -Nse "SHOW STATUS LIKE 'wsrep_cluster_status';"
+  register: galera_cluster_status
+  retries: 90
+  delay: 2
+  until: "'Primary' in galera_cluster_status.stdout"
+  changed_when: false
+  when:
+    - ansible_distribution_major_version >= "7"
+    - inventory_hostname == groups['master'][0]
+  tags: configure_mysql
+
+- name: Wait for Galera master to become Synced and ready
+  shell: >
+    mysql -uroot
+    -S {{ socket }}
+    -Nse "SELECT
+    (SELECT VARIABLE_VALUE FROM information_schema.GLOBAL_STATUS
+     WHERE VARIABLE_NAME='wsrep_local_state_comment'),
+    (SELECT VARIABLE_VALUE FROM information_schema.GLOBAL_STATUS
+     WHERE VARIABLE_NAME='wsrep_ready');"
+  register: galera_master_ready
+  retries: 90
+  delay: 2
+  until:
+    - "'Synced' in galera_master_ready.stdout"
+    - "'ON' in galera_master_ready.stdout"
+  changed_when: false
+  when:
+    - ansible_distribution_major_version >= "7"
+    - inventory_hostname == groups['master'][0]
+  tags: configure_mysql
+
+- name: enable mysql sid service - 2
+  service: name={{lc_sid}} state=started enabled=yes
+  when: (ansible_distribution_major_version < "7")
+  tags: configure_mysql
+
+- name: Create .my.cnf for DB OS user
+  template: src=mysql_cmd_line_clients_config_file.cnf
+    dest={{ db_os_user_basedir }}/v1/admin/.my.cnf
+    owner=root group=root mode=0644
+  tags: configure_mysql
+
+# Deploy script to create default mysql user accounts
+- name: Deploy script to create default mysql user accounts
+  template: src=db.create.users.sql
+    dest=/tmp/db.create.users.sql
+    owner=root group=root mode=0600
+  tags: configure_mysql
+
+# Deploy sample host info entries file
+- name: Deploy sample host info entries file
+  template: src=ck_db_scripts/pydb/load_host_info.txt
+    dest=/tmp/load_host_info.txt
+    owner=root group=root mode=0600
+  tags: configure_mysql
+
+- name: Deploy script to populate ckadmin DB
+  copy: src=opsdb2.sql
+    dest=/tmp/opsdb2.sql
+    owner=root group=root mode=0600
+    force=yes
+  when: to_populate_ckadmin|bool and true
+  tags: configure_mysql
+
+# Deploy script to create default mysql user accounts CK
+- name: Deploy script to create default mysql user accounts
+  template: src=ck_db_users.sql
+    dest=/tmp/ck_db.create.users.sql
+    owner=root group=root mode=0600
+  tags: configure_mysql
+
+
+# Deploy script to create mysql socket user accounts
+- name: Deploy script to create default mysql user accounts
+  template: src=db.create.socket.users.sql
+    dest=/tmp/db.create.socket.users.sql
+    owner=root group=root mode=0600
+  tags: configure_mysql
+
+# secure_mysql_instance
+- name: secure the mysql instance
+  shell: bash {{ db_os_user_homedir }}/.tmp/unix_io_scheduler_check_and_misc.sh secure_mysql_instance
+  tags: configure_mysql
+
+# Deploy script to create DBA DB Objects
+- name: Deploy script to create dba db objects
+  template: src=db_deploy_dba_objects.sql
+    dest=/tmp/db_deploy_dba_objects.sql
+    owner=root group=root mode=0600
+  tags: configure_mysql
+
+- name: Deploy opsdb admin DB .
+  copy: src=opsdb.sql
+    dest=/tmp/opsdb.sql
+    owner=root group=root mode=0600
+    force=yes
+  when:
+    - is_opsdb|bool and true
+  tags: configure_mysql
+
+# create_requisite_mysql_users
+- name: create default mysql users accounts and database
+  shell: bash  {{ db_os_user_homedir }}/.tmp/unix_io_scheduler_check_and_misc.sh create_requisite_mysql_users
+  tags: configure_mysql
+
+# load_mysql_time_zone_data
+# - name: Load time zone data into running MySQL instance
+#   shell: bash  {{ db_os_user_homedir }}/.tmp/unix_io_scheduler_check_and_misc.sh load_mysql_time_zone_data
+#   tags: configure_mysql
+
+# load_mysql_time_zone_data
+
+- name: Check whether MySQL time zone data is already loaded
+  shell: >
+    mysql -uroot
+    -S {{ db_os_user_homedir }}/{{ sid }}/cfg/{{ sid }}mysql.sock
+    -Nse "SELECT COUNT(*) FROM mysql.time_zone_name;"
+  register: mysql_timezone_count
+  changed_when: false
+  failed_when: false
+  when: inventory_hostname == groups['master'][0]
+  tags: configure_mysql
+
+- name: Load time zone data into running MySQL instance
+  shell: bash {{ db_os_user_homedir }}/.tmp/unix_io_scheduler_check_and_misc.sh load_mysql_time_zone_data
+  when:
+    - inventory_hostname == groups['master'][0]
+    - mysql_timezone_count.stdout | int == 0
+  tags: configure_mysql
+
+- name: disable percona repository I
+  ini_file: dest=/etc/yum.repos.d/percona.repo
+            section=ps-80-release-$basearch
+            option=enabled
+            value=0
+  when:
+    - (deploy_default_repo) # is_true_deploy_default_repo|bool and true
+    - (is_mysql80|bool and true) or (is_latest|bool and true)
+  tags: install_mysql
+
+- name: disable oracle community mysql repository
+  ini_file: dest=/etc/yum.repos.d/oracle_mysql.repo
+            section=mysql-community
+            option=enabled
+            value=0
+  when:
+    - (deploy_default_repo) # is_true_deploy_default_repo|bool and true
+    - is_oracle_mysql|bool and true
+  tags: install_mysql
+
+- name: disable mariadb repository
+  ini_file: dest=/etc/yum.repos.d/mariadb.repo
+            section=mariadb
+            option=enabled
+            value=0
+  when:
+    - (deploy_default_repo) # is_true_deploy_default_repo|bool and true
+    - is_mariadb|bool and true
+  tags: install_mysql
+
+- name: Install Perl python modules For Backup
+  yum:
+    state: present
+    name:
+      - perl-DBD-SQLite
+      - perl-JSON
+      - perl-libwww-perl
+      - perl-local-lib
+      - bc
+  tags: backup
+
+- name: Install perl-Sys-SigAction For MySQL Backup
+  yum:
+    state: present
+    name:
+      - perl-Sys-SigAction
+  ignore_errors: True
+
+- name: disable epel repository
+  ini_file: dest=/etc/yum.repos.d/epel.repo
+            section=epel
+            option=enabled
+            value=0
+  when:
+    - (deploy_default_repo)
+  tags: install_mysql
+
+- name: Deploy MySQL PAM Authentication Config File
+  template: src=mysql_AD_or_PAM_config.erb
+    dest=/etc/pam.d/mysql
+    owner=root group=root mode=0644
+  tags: configure_mysql
+
+- name: Deploy MySQL PAM Authentication Config File 2
+  template: src=mysql_AD_or_PAM_config.erb
+    dest=/etc/pam.d/mysqld
+    owner=root group=root mode=0644
+  tags: configure_mysql
+
+# this inventory file and folder is critical to nagios xi and check_mk monitoring
+- name: create mysql instances inventory directory
+  file: path={{ mysql_inventory_dir }}  state=directory  mode=0755
+  tags: configure_mysql
+
+# this inventory file and folder is critical to mysql auto patching
+- name: create mysql instances inventory directory
+  file: path={{ mysql_inventory }}  state=directory  mode=0755
+  tags: configure_mysql
+
+- name: drop in mysql servers inventory file
+  template: src=mysql_inventory.cnf
+    dest={{ mysql_inventory_dir }}/mysql_inventory.cnf
+    owner=root group=root mode=0644
+  tags: configure_mysql
+
+# patch_mysql.flag
+- name: drop in patch_mysql.flag
+  template: src=patch_mysql.flag
+    dest={{ mysql_inventory }}/patch_mysql.flag
+    owner=root group=root mode=0644
+  tags: configure_mysql
+
+- name: drop in mysql auto patch script
+  template: src=patch_mysql.pl
+    dest={{ mysql_inventory }}/patch_mysql.pl
+    owner=root group=root mode=0755
+  tags: configure_mysql
+
+- name: register this mysql instance sid for easy monitoring inventory collection and checks
+  lineinfile: dest={{ mysql_inventory_dir }}/mysql_inventory.cnf
+              regexp="^\s*os_user\s*=\s*{{ db_os_user }}\s*;;\s*socket\s*=\s*{{ socket }}\s*;;\s*sid\s*=\s*{{ sid }}\s*;;\s*port\s*=\s*{{ port }}"
+              line="os_user={{ db_os_user }};;socket={{ socket }};;sid={{ sid }};;port={{ port }}"
+              insertafter="^\s*\[\s*Installed_MySQL_Servers\s*\]\s*"
+  tags: configure_mysql
+
+- name: Create SID.my.cnf for easy nrpe user login
+  template: src=mysql_cmd_line_clients_config_file_4_nrpe_user.cnf
+    dest={{ mysql_inventory_dir }}/{{ sid }}.my.cnf
+    owner=root group=root mode=0644
+  tags: configure_mysql
+
+- name: drop replication latency threshold cnf file for mysql health check - check_mysql_replication_latency
+  template: src=replication_latency_threshold.erb
+    dest={{ mysql_inventory_dir }}/replication_latency_threshold.cnf
+    owner=root group=root mode=0644
+  tags: configure_mysql
+
+- name: Enforce UTC Time Zone
+  lineinfile: dest={{ db_os_user_homedir }}/{{ sid }}/cfg/my_{{sid}}.cnf
+              regexp="#default-time-zone='UTC'"
+              line="default-time-zone='UTC'"
+              state=present
+  notify: restart mysql
+  tags: configure_mysql
+
+- name: Enforce User Session Auditing
+  lineinfile: dest={{ db_os_user_homedir }}/{{ sid }}/cfg/my_{{sid}}.cnf
+              regexp="#init_connect = 'call dba_audit.simpleproc(@out_value); set session SQL_SELECT_LIMIT=@out_value'"
+              line="init_connect = 'call dba_audit.simpleproc(@out_value); set session SQL_SELECT_LIMIT=@out_value'"
+              state=present
+  notify: restart mysql
+  tags: configure_mysql
+
+- name: Uncomment Audit plugin variables
+  replace:
+    path: "{{ db_os_user_homedir }}/{{ sid }}/cfg/my_{{sid}}.cnf"
+    regexp: '^#(audit_log_.*)'
+    replace: '\1'
+  notify: restart mysql
+  tags: configure_mysql
+
+
+# https://stackoverflow.com/questions/41667864/can-the-templates-module-handle-multiple-templates-directories
+- name: Drop DB Admin Scripts For Non-Opsdb - local_dbscripts 1
+  template:
+    src: '{{ item }}'
+    dest: '/usr/local/ops/bin/'
+    mode: 0755
+  with_fileglob: '../templates/ck_db_scripts/rotate_*'
+
+
+- name: Drop DB Admin Scripts For Non-Opsdb - local_dbscripts cron 1
+  template:
+    src: '{{ item }}'
+    dest: '/etc/cron.d/'
+    mode: 0644
+  with_fileglob: '../templates/ck_db_scripts/rotate_*.cron'
+
+
+- name: Drop DB Admin Scripts For Non-Opsdb - local_dbscripts 2
+  template:
+    src: '{{ item }}'
+    dest: '/usr/local/ops/bin/'
+    mode: 0755
+  with_fileglob: '../templates/ck_db_scripts/parse_slow*'
+
+
+- name: Drop DB Admin Scripts For Non-Opsdb - local_dbscripts cron 2
+  template:
+    src: '{{ item }}'
+    dest: '/etc/cron.d/'
+    mode: 0755
+  with_fileglob: '../templates/ck_db_scripts/parse_slow*cron'
+
+
+- name: Drop DB Admin Scripts For Non-Opsdb - local_dbscripts iii
+  template:
+    src: '{{ item }}'
+    dest: '/usr/local/ops/bin/'
+    mode: 0700
+  with_fileglob: '../templates/ck_db_scripts/parameter*'
+
+- name: Drop DB Admin Scripts For Non-Opsdb - local_dbscripts iv
+  template:
+    src: '{{ item }}'
+    dest: '/usr/local/bin/'
+    mode: 0700
+  with_fileglob: '../templates/ck_db_scripts/parameter*'
+
+- name: Drop DB Admin Scripts For Non-Opsdb - local_build_scripts 1
+  template:
+    src: '{{ item }}'
+    dest: '/usr/local/bin/'
+    mode: 0700
+  with_fileglob: '../templates/ck_db_scripts/target*'
+
+
+- name: Drop DB Admin Scripts For Non-Opsdb - local_dbscripts 4
+  template:
+    src: '{{ item }}'
+    dest: '/usr/local/ops/bin/'
+    mode: 0755
+  with_fileglob: '../templates/ck_db_scripts/systemaudit*'
+
+- name: Drop DB Admin Scripts For Non-Opsdb - local_dbscripts 5
+  template:
+    src='{{ item }}'
+    dest='/usr/local/bin/'
+    mode=0744
+  with_fileglob: '../templates/ck_db_scripts/parameter*'
+  # when: item.state == 'file'
+
+- name: Drop DB Admin Scripts For Non-Opsdb - collect_mysql_stat_scripts 1
+  template:
+    src: '{{ item }}'
+    dest: '/usr/local/ops/bin/'
+    mode: 0755
+  with_fileglob: '../templates/ck_db_scripts/collect_mysql_stat*sh'
+
+- name: Drop DB Admin Scripts For Non-Opsdb - collect_mysql_stat_scripts 1
+  template:
+    src: '{{ item }}'
+    dest: '/etc/cron.d/'
+  with_fileglob: '../templates/ck_db_scripts/collect_mysql_stat*cron*'
+
+# - name: Drop DB Admin Scripts For Non-Ops db Nodes
+#   template:
+#     src: '{{ item }}'
+#     dest: '~/{{ item }}'
+#   with_fileglob: '../templates/ck_db_scripts'
+  # when: item.state == 'file'
+
+- name: Drop DB Admin Scripts For Opsdb - ops_dbscripts 1
+  template: src={{item}} dest=/usr/local/ops/bin/ mode=0755
+  with_items:
+    - 'templates/ck_db_scripts/check_slave_status.sh'
+    - 'templates/ck_db_scripts/manage_db.sh'
+    - 'templates/ck_db_scripts/dbinfo.py'
+    - 'templates/ck_db_scripts/processlist.sh'
+    - 'templates/ck_db_scripts/change_master.sh'
+    - 'templates/ck_db_scripts/archived_exec_sql_shards.sh'
+    - 'templates/ck_db_scripts/manage_schema_shards.sh'
+    - 'templates/ck_db_scripts/sync_gtid_set.sh'
+    - 'templates/ck_db_scripts/report_slowlogs.sh'
+    - 'templates/ck_db_scripts/yaml_parser.sh'
+    - 'templates/ck_db_scripts/match_slaves_positions.sh'
+    - 'templates/ck_db_scripts/common_functions.sh'
+    - 'templates/ck_db_scripts/move_table_shards.sh'
+    - 'templates/ck_db_scripts/jira_dba_infsupport.py'
+    - 'templates/ck_db_scripts/user_grants.sh'
+    - 'templates/ck_db_scripts/backup_source.sh'
+    - 'templates/ck_db_scripts/pydb/opsdb_host_info.py'
+    - 'templates/ck_db_scripts/pydb/populate_db_inventory_table.py'
+    - 'templates/ck_db_scripts/check_slave_config.py'
+    - 'templates/ck_db_scripts/manage_shards.py'
+    - 'templates/ck_db_scripts/mysql_config_diff.sh'
+    - 'templates/ck_db_scripts/mysql_compaction.sh'
+    - 'templates/ck_db_scripts/shard_migration.sh'
+    - 'templates/ck_db_scripts/exec_sql_shards.py'
+    - 'templates/ck_db_scripts/create_snapshot_gcp.sh'
+  when:
+    - is_opsdb|bool and true
+
+
+# create directory to hold release outputs - for the sharded environment
+- name: create directory to hold release outputs - for the sharded environment
+  file: path=/var/log/shards/  state=directory  mode=0755
+  when:
+    - is_opsdb|bool and true
+  tags: configure_mysql
+
+
+- name: Create symlink for - ops_dbscripts 1
+  file: src=/usr/local/ops/bin/{{item}} dest=/usr/local/bin/{{item}} state=link
+  with_items:
+    - 'check_slave_status.sh'
+    - 'manage_db.sh'
+    - 'dbinfo.py'
+    - 'processlist.sh'
+    - 'change_master.sh'
+    - 'archived_exec_sql_shards.sh'
+    - 'manage_schema_shards.sh'
+    - 'sync_gtid_set.sh'
+    - 'report_slowlogs.sh'
+    - 'yaml_parser.sh'
+    - 'match_slaves_positions.sh'
+    - 'common_functions.sh'
+    - 'move_table_shards.sh'
+    - 'jira_dba_infsupport.py'
+    - 'user_grants.sh'
+    - 'backup_source.sh'
+    - 'check_slave_config.py'
+    - 'manage_shards.py'
+    - 'populate_db_inventory_table.py'
+    - 'mysql_config_diff.sh'
+    - 'mysql_compaction.sh'
+    - 'shard_migration.sh'
+    - 'exec_sql_shards.py'
+    - 'create_snapshot_gcp.sh'
+  when:
+    - is_opsdb|bool and true
+
+- name: Drop DB Admin Scripts For Opsdb - ops_dbscripts 2
+  template: src={{item}} dest=/usr/local/bin/ mode=0755
+  with_items:
+    - 'templates/ck_db_scripts/build_slave.sh'
+    - 'templates/ck_db_scripts/source_build_slave.sh'
+    - 'templates/ck_db_scripts/restore_snapshot_gcp.sh'
+    - 'templates/ck_db_scripts/scan_binlogs.sh'
+  when:
+    - is_opsdb|bool and true
+
+- name: create python library directory
+  file: path='/usr/local/ops/bin/pydb' state=directory  mode=0755
+  when:
+    - is_opsdb|bool and true
+  tags: configure_mysql
+
+- name: Drop DB Admin Scripts For Opsdb - ops_dbscripts 1
+  template: src={{item}} dest=/usr/local/ops/bin/pydb/ mode=0755
+  with_items:
+    - 'templates/ck_db_scripts/pydb/opsdb_host_info.py'
+  when:
+    - is_opsdb|bool and true
+
+# Add dbadmin user
+- name: Add the user - dbadmin_user without a specific uid
+  action: user name={{ dbadmin_user }} comment="DBA ADMIN OS USER"  createhome=yes   home={{ dbadmin_user_homedir }} shell="/bin/bash"  group={{ dbadmin_group }}
+  tags: ux_users
+
+- name: create dbadmin_user home directory
+  file: path={{ dbadmin_user_homedir }}  state=directory owner={{ dbadmin_user }} group={{ dbadmin_group }} mode=0755
+  tags: ux_users
+
+- name: create dbadmin_user ssh directory
+  file: path={{ dbadmin_user_homedir }}/.ssh  state=directory owner={{ dbadmin_user }} group={{ dbadmin_group }} mode=0700
+  tags: ux_users
+
+- name: Adding public key for user - {{ dbadmin_user }}
+  authorized_key: user={{ dbadmin_user }}  key="{{ lookup('file', 'dbadmin_opsdb.pub') }}"
+  tags: ux_users
+
+- name: Copy {{ dbadmin_user }} private key
+  copy: content="{{ dbadmin_private_key }}" dest={{ dbadmin_user_homedir }}/.ssh/id_rsa force=yes mode=0600
+        owner={{ dbadmin_user }} group={{ dbadmin_group }}
+  tags: ux_users
+
+- name: Copy {{ dbadmin_user }} public key
+  copy: src=dbadmin_opsdb.pub dest={{ dbadmin_user_homedir }}/.ssh/id_rsa.pub force=yes mode=0644
+        owner={{ dbadmin_user }} group={{ dbadmin_group }}
+  tags: ux_users
+
+- name: Update and Validate the sudoers file before saving
+  lineinfile:
+    path: /etc/sudoers
+    state: present
+    regexp: '^dbadmin  ALL=.*'
+    line: 'dbadmin  ALL= (root) NOPASSWD: /usr/local/bin/target_build_slave.sh, /usr/bin/innobackupex, /usr/local/bin/target_restore_snapshot_gcp.sh, /usr/local/bin/target_scan_binlogs.sh'
+    validate: /usr/sbin/visudo -cf %s
+
+- name: set socket file value for all mysql commands in /etc/my.cnf
+  lineinfile: dest=/etc/my.cnf
+              regexp="^\s*\[\s*client\s*\]\s*"
+              line="[client]"
+              insertbefore="^\s*\[\s*mysqld\s*\]\s*"
+  tags: configure_mysql
+
+- name: set socket file value for all mysql commands in /etc/my.cnf
+  lineinfile: dest=/etc/my.cnf
+              regexp="^\s*socket={{ socket }}\s*"
+              line="socket={{ socket }}"
+              insertafter="^\s*\[\s*client\s*\]\s*"
+  tags: configure_mysql
+
+- name: Modify my.cnf - removing unwanted system variables 1
+  replace:
+    path: /etc/my.cnf
+    after: '\[mysqld\]'
+    regexp: '^datadir.*'
+    replace: ''
+
+- name: Modify my.cnf - removing unwanted system variables 2
+  replace:
+    path: /etc/my.cnf
+    after: '\[mysqld\]'
+    regexp: '^socket.*'
+    replace: ''
+
+- name: Modify my.cnf - removing unwanted system variables 3
+  replace:
+    path: /etc/my.cnf
+    after: '\[mysqld\]'
+    regexp: '^pid-file.*'
+    replace: ''
+
+# - name: Comment Out Galera bootstrapping parameter
+#   replace:
+#     path: "{{ db_os_user_homedir }}/{{ sid }}/cfg/my_{{sid}}.cnf"
+#     regexp:  "^wsrep-new-cluster"
+#     replace: "#wsrep-new-cluster"
+#   when: galera_bootstrap_stat_result.stat.exists  == False
+#   run_once: true
+#   delegate_to: "{{ groups['master'][0] }}"
+#   tags: configure_mysql
+
+# - name: Disable Galera bootstrap parameter after initial master startup
+#   replace:
+#     path: "{{ db_os_user_homedir }}/{{ sid }}/cfg/my_{{sid}}.cnf"
+#     regexp: '^\s*wsrep-new-cluster\s*$'
+#     replace: '#wsrep-new-cluster'
+#   when:
+#     - inventory_hostname == groups['master'][0]
+#     - galera_bootstrap_stat_result.stat.exists == False
+#   run_once: true
+#   delegate_to: "{{ groups['master'][0] }}"
+#   tags: configure_mysql
