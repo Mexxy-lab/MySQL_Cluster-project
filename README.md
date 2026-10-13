@@ -170,7 +170,17 @@ ssh -i .vagrant/machines/np-mysql-lvmv9-worker001/virtualbox/private_key \
   -o StrictHostKeyChecking=no \
   vagrant@192.168.1.131
 
+mysql_config_editor set \
+  --login-path=icadmin \
+  --host=localhost \
+  --user=icadmin \
+  --password                                                    | Used to set your log in path
+
 mysql -uroot -p
+mysql -uicadmin -p
+mysql --login-path=icadmin / root                                      | Would not prompt for password
+
+mysql_config_editor print --all                                        | Would list all configured users/credentials
 sudo mysqlsh --js --interactive
 
 shell.connect({user: "icadmin", host: "localhost", port: 3306});
