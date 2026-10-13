@@ -8,8 +8,26 @@ shell.connect({
 
 var session = shell.getSession();
 var clusterName = "{{ mysql_cluster_name }}";
-var masterAddress = "{{ hostvars[groups['master'][0]].ansible_host }}:{{ mysql_server_port }}";
-var workerAddress = "{{ hostvars[groups['workers'][0]].ansible_host }}:{{ mysql_server_port }}";
+
+var masterHost = "{{ hostvars[groups['master'][0]].ansible_host }}";
+var workerHost = "{{ hostvars[groups['workers'][0]].ansible_host }}";
+
+var masterAddress = masterHost + ":{{ mysql_server_port }}";
+var workerAddress = workerHost + ":{{ mysql_server_port }}";
+
+var masterConnection = {
+  user: "{{ mysql_cluster_admin_user }}",
+  password: "{{ mysql_cluster_admin_password }}",
+  host: masterHost,
+  port: {{ mysql_server_port }}
+};
+
+var workerConnection = {
+  user: "{{ mysql_cluster_admin_user }}",
+  password: "{{ mysql_cluster_admin_password }}",
+  host: workerHost,
+  port: {{ mysql_server_port }}
+};
 
 function getExistingCluster() {
   try {
@@ -17,6 +35,26 @@ function getExistingCluster() {
   } catch (e) {
     return null;
   }
+}
+
+function findMember(topology, address) {
+  var found = null;
+
+  Object.keys(topology).some(function (key) {
+    var member = topology[key];
+
+    if (
+      key === address ||
+      member.address === address
+    ) {
+      found = member;
+      return true;
+    }
+
+    return false;
+  });
+
+  return found;
 }
 
 var metadataResult = session.runSql(
@@ -30,6 +68,8 @@ var cluster;
 if (!metadataExists) {
   print("No existing cluster metadata found. Creating " + clusterName + ".");
 
+  // The master is the connected local instance.
+  // InnoDB Cluster defaults to Single-Primary mode.
   cluster = dba.createCluster(clusterName, {
     communicationStack: "MYSQL",
     memberSslMode: "DISABLED",
@@ -39,17 +79,9 @@ if (!metadataExists) {
 
   print("Adding worker: " + workerAddress);
 
-  cluster.addInstance(
-    {
-      user: "{{ mysql_cluster_admin_user }}",
-      password: "{{ mysql_cluster_admin_password }}",
-      host: "{{ hostvars[groups['workers'][0]].ansible_host }}",
-      port: {{ mysql_server_port }}
-    },
-    {
-      recoveryMethod: "clone"
-    }
-  );
+  cluster.addInstance(workerConnection, {
+    recoveryMethod: "clone"
+  });
 
 } else {
   print("Existing cluster metadata found. Preserving " + clusterName + ".");
@@ -109,21 +141,7 @@ if (!metadataExists) {
   // Check the worker only when recovering an existing cluster.
   var status = cluster.status();
   var topology = status.defaultReplicaSet.topology;
-
-  var workerMember = null;
-
-  Object.keys(topology).forEach(function (key) {
-    if (key === workerAddress || topology[key].address === workerAddress) {
-      workerMember = topology[key];
-    }
-  });
-
-  var workerConnection = {
-    user: "{{ mysql_cluster_admin_user }}",
-    password: "{{ mysql_cluster_admin_password }}",
-    host: "{{ hostvars[groups['workers'][0]].ansible_host }}",
-    port: {{ mysql_server_port }}
-  };
+  var workerMember = findMember(topology, workerAddress);
 
   if (!workerMember) {
     print("Worker is missing from cluster metadata. Adding " + workerAddress + ".");
@@ -144,36 +162,85 @@ if (!metadataExists) {
   }
 }
 
-// Ensure the requested multi-primary topology is active.
+// Enforce Single-Primary mode with the inventory master as primary.
 var currentStatus = cluster.status();
+var currentReplicaSet = currentStatus.defaultReplicaSet;
 
-if (currentStatus.defaultReplicaSet.topologyMode !== "Multi-Primary") {
-  print("Switching cluster to multi-primary mode.");
-  cluster.switchToMultiPrimaryMode();
+if (currentReplicaSet.topologyMode !== "Single-Primary") {
+  print("Switching cluster to Single-Primary mode with master as primary.");
+
+  cluster.switchToSinglePrimaryMode(masterAddress);
+
 } else {
-  print("Cluster is already in multi-primary mode.");
-}
+  // Single-Primary mode may already be active but have a different primary.
+  var currentTopology = currentReplicaSet.topology;
+  var currentMasterMember = findMember(currentTopology, masterAddress);
 
-// Validate the two expected members.
-var finalStatus = cluster.status({extended: 1});
-var finalTopology = finalStatus.defaultReplicaSet.topology;
-
-[masterAddress, workerAddress].forEach(function (address) {
-  var member = finalTopology[address];
-
-  if (!member || member.status !== "ONLINE" || member.mode !== "R/W") {
+  if (!currentMasterMember) {
     throw new Error(
-      "Cluster validation failed for " + address +
-      ". Expected ONLINE and R/W. Actual status: " +
-      JSON.stringify(member || null)
+      "Cannot select the inventory master as primary: " +
+      masterAddress + " is not present in cluster metadata."
     );
   }
-});
 
-if (finalStatus.defaultReplicaSet.topologyMode !== "Multi-Primary") {
-  throw new Error("Cluster validation failed: expected Multi-Primary mode.");
+  if (currentMasterMember.status !== "ONLINE") {
+    throw new Error(
+      "Cannot select the inventory master as primary: " +
+      masterAddress + " is not ONLINE."
+    );
+  }
+
+  if (currentMasterMember.mode !== "R/W") {
+    print("The worker or another member is currently primary.");
+    print("Promoting inventory master: " + masterAddress);
+
+    cluster.setPrimaryInstance(masterAddress);
+
+  } else {
+    print("Cluster is already Single-Primary with the master as primary.");
+  }
+}
+
+// Validate both expected members and their access modes.
+var finalStatus = cluster.status({ extended: 1 });
+var finalReplicaSet = finalStatus.defaultReplicaSet;
+var finalTopology = finalReplicaSet.topology;
+
+var finalMaster = findMember(finalTopology, masterAddress);
+var finalWorker = findMember(finalTopology, workerAddress);
+
+if (
+  !finalMaster ||
+  finalMaster.status !== "ONLINE" ||
+  finalMaster.mode !== "R/W"
+) {
+  throw new Error(
+    "Cluster validation failed for master " + masterAddress +
+    ". Expected ONLINE and R/W. Actual: " +
+    JSON.stringify(finalMaster || null)
+  );
+}
+
+if (
+  !finalWorker ||
+  finalWorker.status !== "ONLINE" ||
+  finalWorker.mode !== "R/O"
+) {
+  throw new Error(
+    "Cluster validation failed for worker " + workerAddress +
+    ". Expected ONLINE and R/O. Actual: " +
+    JSON.stringify(finalWorker || null)
+  );
+}
+
+if (finalReplicaSet.topologyMode !== "Single-Primary") {
+  throw new Error(
+    "Cluster validation failed: expected Single-Primary mode."
+  );
 }
 
 print("Cluster validation successful.");
+print("Master primary: " + masterAddress);
+print("Worker secondary: " + workerAddress);
 print("Final cluster status:");
 print(JSON.stringify(finalStatus, null, 2));
